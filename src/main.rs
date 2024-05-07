@@ -19,22 +19,41 @@ const BOARD: &'static str = "
 40033333004
 ";
 
+const ARRANGEMENT: &'static str = "
+0 5 1
+";
+
 fn main() {
+    let structure = Board::parse_structure(BOARD);
+    let board = Board::<11, 11> {
+        structure,
+        field_size: 50.,
+        border: 4.,
+        padding: 8.,
+    };
+
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_resource(Board::<11, 11>::new(BOARD))
+        .insert_resource(board)
+        .insert_resource(Arrangement::from_data(ARRANGEMENT))
         .insert_resource(ClearColor(Color::rgb(1., 1., 1.)))
-        .add_systems(Startup, (setup, create_board::<11, 11>))
+        .add_systems(
+            Startup,
+            (setup, create_board::<11, 11>, spawn_figures::<11, 11>),
+        )
         .run();
 }
 
 #[derive(Resource)]
 struct Board<const WIDTH: usize, const HEIGHT: usize> {
     structure: [[u8; WIDTH]; HEIGHT],
+    field_size: f32,
+    border: f32,
+    padding: f32,
 }
 
 impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
-    fn new(data: &str) -> Board<WIDTH, HEIGHT> {
+    fn parse_structure(data: &str) -> [[u8; WIDTH]; HEIGHT] {
         let mut structure: [[u8; WIDTH]; HEIGHT] = [[0; WIDTH]; HEIGHT];
 
         let mut row = 0;
@@ -57,7 +76,78 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
             }
         }
 
-        return Board { structure };
+        return structure;
+    }
+}
+
+struct BoardPosition {
+    x: usize,
+    y: usize,
+}
+
+#[derive(Debug)]
+enum FigureType {
+    King,
+    Soldier,
+}
+
+#[derive(Component)]
+struct Figure {
+    kind: FigureType,
+}
+
+#[derive(Resource)]
+struct Arrangement {
+    data: Vec<(FigureType, BoardPosition)>,
+}
+
+impl Arrangement {
+    fn from_data(data: &str) -> Self {
+        let mut arrangement: Vec<(FigureType, BoardPosition)> = vec![];
+
+        for line in data.lines() {
+            if line == "" {
+                continue;
+            }
+
+            let mut token_iter = line.split(' ');
+
+            let kind = if let Some(kind_unparsed) = token_iter.next() {
+                let kind_parsed = kind_unparsed
+                    .parse::<u8>()
+                    .expect("kind described by data should be either 0 or 1");
+
+                match kind_parsed {
+                    0 => FigureType::King,
+                    1 => FigureType::Soldier,
+                    _ => panic!("kind described by data should be either 0 or 1"),
+                }
+            } else {
+                panic!("a figure should be described by 3, space-separated values");
+            };
+
+            let x = if let Some(x_unparsed) = token_iter.next() {
+                let x_parsed = x_unparsed
+                    .parse::<usize>()
+                    .expect("position x should be a usize");
+                x_parsed
+            } else {
+                panic!("a figure should be described by 3, space-separated values");
+            };
+
+            let y = if let Some(y_unparsed) = token_iter.next() {
+                let y_parsed = y_unparsed
+                    .parse::<usize>()
+                    .expect("position y should be a usize");
+                y_parsed
+            } else {
+                panic!("a figure should be described by 3, space-separated values");
+            };
+
+            arrangement.push((kind, BoardPosition { x, y }));
+        }
+
+        return Arrangement { data: arrangement };
     }
 }
 
@@ -66,19 +156,20 @@ fn setup(mut commands: Commands) {
 }
 
 fn create_board<const WIDTH: usize, const HEIGHT: usize>(
+    board: Res<Board<WIDTH, HEIGHT>>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    board: Res<Board<WIDTH, HEIGHT>>,
 ) {
     let width = WIDTH as f32;
     let height = HEIGHT as f32;
 
-    let size = 50.;
-    let border = 4.;
+    let size = board.field_size;
+    let border = board.border;
+    let padding = board.padding;
+
     let offset = -(((size + border) * width + border) / 2.);
 
-    let padding = 8.;
     let background_size = (size + border) * width + border + 2. * padding;
     let background = Mesh2dHandle(meshes.add(Rectangle::new(background_size, background_size)));
     commands.spawn(MaterialMesh2dBundle {
@@ -114,5 +205,28 @@ fn create_board<const WIDTH: usize, const HEIGHT: usize>(
                 ..default()
             });
         }
+    }
+}
+
+fn spawn_figures<const WIDTH: usize, const HEIGHT: usize>(
+    arrangement: Res<Arrangement>,
+    board: Res<Board<WIDTH, HEIGHT>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let circle = Mesh2dHandle(meshes.add(Circle::new(board.field_size / 2. - 0.1)));
+
+    for figure in &arrangement.data {
+        let x = figure.1.x as f32;
+        let y = figure.1.y as f32;
+
+        commands.spawn(MaterialMesh2dBundle {
+            mesh: circle.clone(),
+            material: materials.add(Color::rgb(1., 1., 1.)),
+            transform: Transform::from_xyz(x * 10., y * 10., 2.),
+            ..default()
+        });
+        print!("{:?}", figure.0);
     }
 }
