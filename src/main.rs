@@ -23,7 +23,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(Board::<11, 11>::new(BOARD))
-        .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
+        .insert_resource(ClearColor(Color::rgb(1., 1., 1.)))
         .add_systems(Startup, (setup, create_board::<11, 11>))
         .run();
 }
@@ -71,7 +71,23 @@ fn create_board<const WIDTH: usize, const HEIGHT: usize>(
     mut materials: ResMut<Assets<ColorMaterial>>,
     board: Res<Board<WIDTH, HEIGHT>>,
 ) {
+    let width = WIDTH as f32;
+    let height = HEIGHT as f32;
+
     let size = 50.;
+    let border = 4.;
+    let offset = -(((size + border) * width + border) / 2.);
+
+    let padding = 8.;
+    let background_size = (size + border) * width + border + 2. * padding;
+    let background = Mesh2dHandle(meshes.add(Rectangle::new(background_size, background_size)));
+    commands.spawn(MaterialMesh2dBundle {
+        mesh: background,
+        material: materials.add(Color::rgb(0., 0., 0.)),
+        transform: Transform::from_xyz(0., 0., 0.),
+        ..default()
+    });
+
     let square = Mesh2dHandle(meshes.add(Rectangle::new(size, size)));
     for (i, row) in board.structure.iter().enumerate() {
         for (j, element) in row.iter().enumerate() {
@@ -84,13 +100,16 @@ fn create_board<const WIDTH: usize, const HEIGHT: usize>(
                 _ => panic!("no color assoicated with the provided element"),
             };
 
+            let i = i as f32;
+            let j = j as f32;
+
             commands.spawn(MaterialMesh2dBundle {
                 mesh: square.clone(),
                 material: materials.add(color),
                 transform: Transform::from_xyz(
-                    j as f32 * size - (size * WIDTH as f32 / 2.),
-                    (HEIGHT as f32 - i as f32) * size - (size * HEIGHT as f32 / 2.),
-                    0.0,
+                    offset + j * (size + border) + border + size / 2.,
+                    offset + (height - i) * (size + border) - size / 2.,
+                    1.0,
                 ),
                 ..default()
             });
