@@ -1,8 +1,12 @@
 use core::panic;
 
 use bevy::{
+    math::Vec2,
     prelude::*,
+    reflect::Map,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+    utils::HashMap,
+    window::close_on_esc,
 };
 
 const BOARD: &'static str = "
@@ -19,40 +23,112 @@ const BOARD: &'static str = "
 40033333004
 ";
 
-const ARRANGEMENT: &'static str = "
-0 5 1
+const STARTING_POSITION: &'static str = "
+a s 0 3
+a s 0 4
+a s 0 5
+a s 0 6
+a s 0 7
+a s 1 5
+a s 3 0
+d s 3 5
+a s 3 10
+a s 4 0
+d s 4 4
+d s 4 5
+d s 4 6
+a s 4 10
+a s 5 0
+a s 5 1
+d s 5 3
+d s 5 4
+d k 5 5
+d s 5 6
+d s 5 7
+a s 5 9
+a s 5 10
+a s 6 0 
+d s 6 4
+d s 6 5
+d s 6 6
+a s 6 10
+a s 7 0
+d s 7 5
+a s 7 10
+a s 9 5
+a s 10 3
+a s 10 4
+a s 10 5
+a s 10 6
+a s 10 7
 ";
 
 fn main() {
-    let structure = Board::parse_structure(BOARD);
-    let board = Board::<11, 11> {
-        structure,
-        field_size: 50.,
-        border: 4.,
-        padding: 8.,
+    let board = {
+        let structure = BoardData::<11, 11>::parse_structure(BOARD);
+        let mut colors = HashMap::<u8, Color>::new();
+        colors.insert(0, Color::rgb(0.7, 0.7, 0.7));
+        colors.insert(1, Color::rgb(0.3, 0.4, 1.0));
+        colors.insert(2, Color::rgb(0.2, 0.2, 0.7));
+        colors.insert(3, Color::rgb(0.4, 0.2, 0.2));
+        colors.insert(4, Color::rgb(0.6, 0.2, 0.2));
+
+        let starting_position = BoardData::<11, 11>::parse_arrangement(STARTING_POSITION);
+
+        BoardData::<11, 11> {
+            structure,
+            colors,
+            starting_position,
+            field_size: 50.,
+            border_width: 4.,
+            outer_border_width: 12.,
+        }
     };
 
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(board)
-        .insert_resource(Arrangement::from_data(ARRANGEMENT))
-        .insert_resource(ClearColor(Color::rgb(1., 1., 1.)))
+        .insert_resource(ClearColor(Color::hex("19335E").unwrap()))
         .add_systems(
             Startup,
-            (setup, create_board::<11, 11>, spawn_figures::<11, 11>),
+            (
+                setup,
+                (create_board::<11, 11>, spawn_figures::<11, 11>).chain(),
+            ),
         )
+        .add_systems(Update, close_on_esc)
+        .add_event::<CreateBoardEvent>()
         .run();
 }
 
-#[derive(Resource)]
+#[derive(Component)]
 struct Board<const WIDTH: usize, const HEIGHT: usize> {
     structure: [[u8; WIDTH]; HEIGHT],
+    starting_position: Vec<Figure>,
     field_size: f32,
-    border: f32,
-    padding: f32,
+    border_width: f32,
+    outer_border_width: f32,
+    upper_left_field_position: Vec2,
 }
 
-impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
+/// Data on how exactly to initialize the board.
+#[derive(Resource)]
+struct BoardData<const WIDTH: usize, const HEIGHT: usize> {
+    structure: [[u8; WIDTH]; HEIGHT],
+    starting_position: Vec<Figure>,
+    colors: HashMap<u8, Color>,
+    field_size: f32,
+    border_width: f32,
+    outer_border_width: f32,
+}
+
+#[derive(Resource)]
+struct FigureData {
+    colors: HashMap<Side, Color>,
+    shapes: HashMap<FigureType, Color>,
+}
+
+impl<const WIDTH: usize, const HEIGHT: usize> BoardData<WIDTH, HEIGHT> {
     fn parse_structure(data: &str) -> [[u8; WIDTH]; HEIGHT] {
         let mut structure: [[u8; WIDTH]; HEIGHT] = [[0; WIDTH]; HEIGHT];
 
@@ -78,32 +154,9 @@ impl<const WIDTH: usize, const HEIGHT: usize> Board<WIDTH, HEIGHT> {
 
         return structure;
     }
-}
 
-struct BoardPosition {
-    x: usize,
-    y: usize,
-}
-
-#[derive(Debug)]
-enum FigureType {
-    King,
-    Soldier,
-}
-
-#[derive(Component)]
-struct Figure {
-    kind: FigureType,
-}
-
-#[derive(Resource)]
-struct Arrangement {
-    data: Vec<(FigureType, BoardPosition)>,
-}
-
-impl Arrangement {
-    fn from_data(data: &str) -> Self {
-        let mut arrangement: Vec<(FigureType, BoardPosition)> = vec![];
+    fn parse_arrangement(data: &str) -> Vec<Figure> {
+        let mut result: Vec<Figure> = vec![];
 
         for line in data.lines() {
             if line == "" {
@@ -112,18 +165,24 @@ impl Arrangement {
 
             let mut token_iter = line.split(' ');
 
-            let kind = if let Some(kind_unparsed) = token_iter.next() {
-                let kind_parsed = kind_unparsed
-                    .parse::<u8>()
-                    .expect("kind described by data should be either 0 or 1");
-
-                match kind_parsed {
-                    0 => FigureType::King,
-                    1 => FigureType::Soldier,
-                    _ => panic!("kind described by data should be either 0 or 1"),
+            let side = if let Some(side_unparsed) = token_iter.next() {
+                match side_unparsed {
+                    "a" => Side::Attacker,
+                    "d" => Side::Defender,
+                    _ => panic!("side described by data should be either a or d"),
                 }
             } else {
-                panic!("a figure should be described by 3, space-separated values");
+                panic!("a figure should be described by 4, space-separated values");
+            };
+
+            let kind = if let Some(kind_unparsed) = token_iter.next() {
+                match kind_unparsed {
+                    "k" => FigureType::King,
+                    "s" => FigureType::Soldier,
+                    _ => panic!("kind described by data should be either k or s"),
+                }
+            } else {
+                panic!("a figure should be described by 4, space-separated values");
             };
 
             let x = if let Some(x_unparsed) = token_iter.next() {
@@ -132,7 +191,7 @@ impl Arrangement {
                     .expect("position x should be a usize");
                 x_parsed
             } else {
-                panic!("a figure should be described by 3, space-separated values");
+                panic!("a figure should be described by 4, space-separated values");
             };
 
             let y = if let Some(y_unparsed) = token_iter.next() {
@@ -141,92 +200,188 @@ impl Arrangement {
                     .expect("position y should be a usize");
                 y_parsed
             } else {
-                panic!("a figure should be described by 3, space-separated values");
+                panic!("a figure should be described by 4, space-separated values");
             };
 
-            arrangement.push((kind, BoardPosition { x, y }));
+            if WIDTH <= x {
+                panic!("x coordinate of figure should be less then the width of the board");
+            }
+
+            if HEIGHT <= y {
+                panic!("y coordinate of figure should be less then the height of the board");
+            }
+
+            result.push(Figure {
+                side,
+                kind,
+                board_position: BoardPosition { x, y },
+            });
         }
 
-        return Arrangement { data: arrangement };
+        return result;
     }
+}
+
+#[derive(Debug, Clone)]
+enum FigureType {
+    King,
+    Soldier,
+}
+
+#[derive(Debug, Clone)]
+enum Side {
+    Attacker,
+    Defender,
+}
+
+#[derive(Debug, Clone)]
+struct BoardPosition {
+    x: usize,
+    y: usize,
+}
+
+#[derive(Clone, Component)]
+struct Figure {
+    side: Side,
+    kind: FigureType,
+    board_position: BoardPosition,
 }
 
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
+#[derive(Event)]
+struct CreateBoardEvent(Entity);
+
 fn create_board<const WIDTH: usize, const HEIGHT: usize>(
-    board: Res<Board<WIDTH, HEIGHT>>,
+    board_data: Res<BoardData<WIDTH, HEIGHT>>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut event: EventWriter<CreateBoardEvent>,
 ) {
     let width = WIDTH as f32;
-    let height = HEIGHT as f32;
 
-    let size = board.field_size;
-    let border = board.border;
-    let padding = board.padding;
+    let size = board_data.field_size;
+    let border = board_data.border_width;
+    let padding = board_data.outer_border_width;
 
-    let offset = -(((size + border) * width + border) / 2.);
+    let offset = ((size + border) * width + border) / 2. - (border + size / 2.);
 
-    let background_size = (size + border) * width + border + 2. * padding;
-    let background = Mesh2dHandle(meshes.add(Rectangle::new(background_size, background_size)));
-    commands.spawn(MaterialMesh2dBundle {
-        mesh: background,
-        material: materials.add(Color::rgb(0., 0., 0.)),
-        transform: Transform::from_xyz(0., 0., 0.),
-        ..default()
-    });
+    let board = commands
+        .spawn((
+            SpatialBundle::default(),
+            Board::<WIDTH, HEIGHT> {
+                structure: board_data.structure,
+                starting_position: board_data.starting_position.to_vec(),
+                field_size: board_data.field_size,
+                border_width: board_data.border_width,
+                outer_border_width: board_data.outer_border_width,
+                upper_left_field_position: Vec2 {
+                    x: -offset,
+                    y: offset,
+                },
+            },
+        ))
+        .id();
+
+    let background_size = (size + border) * width - border + 2. * padding;
+    let background = commands
+        .spawn(MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(background_size, background_size))),
+            material: materials.add(Color::rgb(0., 0., 0.)),
+            transform: Transform::from_xyz(0., 0., 0.),
+            ..default()
+        })
+        .id();
+
+    let colors: HashMap<u8, Handle<ColorMaterial>> = board_data
+        .colors
+        .iter()
+        .map(|(key, color)| (*key, materials.add(*color)))
+        .collect();
+
+    let mut fields: Vec<Entity> = vec![];
 
     let square = Mesh2dHandle(meshes.add(Rectangle::new(size, size)));
-    for (i, row) in board.structure.iter().enumerate() {
+    for (i, row) in board_data.structure.iter().enumerate() {
         for (j, element) in row.iter().enumerate() {
-            let color = match element {
-                0 => Color::rgb(0.7, 0.7, 0.7),
-                1 => Color::rgb(0.3, 0.4, 1.0),
-                2 => Color::rgb(0.2, 0.2, 0.7),
-                3 => Color::rgb(0.4, 0.2, 0.2),
-                4 => Color::rgb(0.6, 0.2, 0.2),
-                _ => panic!("no color assoicated with the provided element"),
-            };
+            let color = colors
+                .get(element)
+                .expect("no color assoicated with the provided element")
+                .clone();
 
             let i = i as f32;
             let j = j as f32;
 
-            commands.spawn(MaterialMesh2dBundle {
-                mesh: square.clone(),
-                material: materials.add(color),
-                transform: Transform::from_xyz(
-                    offset + j * (size + border) + border + size / 2.,
-                    offset + (height - i) * (size + border) - size / 2.,
-                    1.0,
-                ),
-                ..default()
-            });
+            let field = commands
+                .spawn(MaterialMesh2dBundle {
+                    mesh: square.clone(),
+                    material: color,
+                    transform: Transform::from_xyz(
+                        -offset + j * (size + border),
+                        offset - i * (size + border),
+                        1.0,
+                    ),
+                    ..default()
+                })
+                .id();
+
+            fields.push(field);
         }
     }
+
+    // add all fields and the background as child entities to the board
+    let mut board_entity_commands = commands.entity(board);
+    board_entity_commands.push_children(&[background]);
+    board_entity_commands.push_children(&fields[..]);
+
+    event.send(CreateBoardEvent(board));
 }
 
 fn spawn_figures<const WIDTH: usize, const HEIGHT: usize>(
-    arrangement: Res<Arrangement>,
-    board: Res<Board<WIDTH, HEIGHT>>,
+    query: Query<&Board<WIDTH, HEIGHT>>,
+    mut event: EventReader<CreateBoardEvent>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let circle = Mesh2dHandle(meshes.add(Circle::new(board.field_size / 2. - 0.1)));
+    for CreateBoardEvent(entity) in event.read() {
+        let board = query.get(*entity).unwrap();
 
-    for figure in &arrangement.data {
-        let x = figure.1.x as f32;
-        let y = figure.1.y as f32;
+        let upper_left = board.upper_left_field_position;
+        let offset = board.field_size + board.border_width;
 
-        commands.spawn(MaterialMesh2dBundle {
-            mesh: circle.clone(),
-            material: materials.add(Color::rgb(1., 1., 1.)),
-            transform: Transform::from_xyz(x * 10., y * 10., 2.),
-            ..default()
-        });
-        print!("{:?}", figure.0);
+        let square_size = board.field_size * 0.65;
+        let square = Mesh2dHandle(meshes.add(Rectangle::new(square_size, square_size)));
+
+        let circle = Mesh2dHandle(meshes.add(Circle::new(board.field_size * 0.4)));
+
+        for figure in &board.starting_position {
+            let x = figure.board_position.x as f32;
+            let y = figure.board_position.y as f32;
+
+            let color = match &figure.side {
+                Side::Attacker => Color::rgb(0., 0., 0.),
+                Side::Defender => Color::rgb(1., 1., 1.),
+            };
+
+            let shape = match &figure.kind {
+                FigureType::Soldier => square.clone(),
+                FigureType::King => circle.clone(),
+            };
+
+            commands.spawn(MaterialMesh2dBundle {
+                mesh: shape,
+                material: materials.add(color),
+                transform: Transform::from_xyz(
+                    upper_left.x + x * offset,
+                    upper_left.y - y * offset,
+                    2.,
+                ),
+                ..default()
+            });
+        }
     }
 }
