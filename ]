@@ -113,15 +113,11 @@ fn main() {
 
     App::new()
         .add_plugins(DefaultPlugins)
-        .init_resource::<SelectedFigure>()
         .insert_resource(board_data)
         .insert_resource(figure_data)
         .insert_resource(clear_color)
         .add_systems(Startup, (setup, (spawn_board, setup_board).chain()))
-        .add_systems(
-            Update,
-            (close_on_esc, select_figure, visual_move_figure, move_figure),
-        )
+        .add_systems(Update, close_on_esc)
         .add_event::<CreateBoardEvent>()
         .run();
 }
@@ -253,13 +249,6 @@ struct FigureData {
     meshes: HashMap<FigureKind, Mesh>,
 }
 
-#[derive(Resource, Default, Debug, Copy, Clone)]
-enum SelectedFigure {
-    Some(Entity),
-    #[default]
-    None,
-}
-
 // COMPONENTS
 
 #[derive(Component)]
@@ -269,7 +258,6 @@ struct Board {
     starting_position: Vec<Figure>,
     field_size: f32,
     border_width: f32,
-    field_offset: f32,
     upper_left_field_position: Vec2,
     end_positions: Vec<BoardPosition>,
 }
@@ -282,41 +270,15 @@ impl Board {
             starting_position: data.starting_position.to_vec(),
             field_size: data.field_size,
             border_width: data.border_width,
-            field_offset: data.field_size + data.border_width,
             upper_left_field_position: upper_left,
             end_positions: vec![],
         }
 
         // TODO properly set end_positions!!!
     }
-
-    fn world_to_bord_position(&self, position: Vec2) -> BoardPosition {
-        let upper_left = self.upper_left_field_position;
-        let field_size = self.field_size;
-        let field_offset = self.field_offset;
-
-        let x_adjusted = position.x - upper_left.x + field_size / 2.;
-        let y_adjusted = -(position.y - (upper_left.y + field_size / 2.));
-
-        let x = x_adjusted as usize / field_offset as usize;
-        let y = y_adjusted as usize / field_offset as usize;
-
-        BoardPosition { x, y }
-    }
-
-    fn board_to_world_position(&self, position: BoardPosition) -> Vec2 {
-        let upper_left = self.upper_left_field_position;
-        let field_size = self.field_size;
-        let field_offset = self.field_offset;
-
-        let x = upper_left.x + position.x as f32 * field_offset;
-        let y = upper_left.y - position.y as f32 * field_offset;
-
-        Vec2 { x, y }
-    }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct BoardPosition {
     x: usize,
     y: usize,
@@ -334,11 +296,16 @@ enum FigureKind {
     Soldier,
 }
 
-#[derive(Component, Debug, Copy, Clone)]
+#[derive(Debug, Clone, Component)]
 struct Figure {
     side: Side,
     kind: FigureKind,
     board_position: BoardPosition,
+}
+
+#[derive(Debug, Copy, Clone, Component)]
+struct Draggable {
+    dragged: bool,
 }
 
 #[derive(Component)]
@@ -465,6 +432,9 @@ fn setup_board(
     for CreateBoardEvent(entity) in event.read() {
         let board = query.get(*entity).unwrap();
 
+        let upper_left = board.upper_left_field_position;
+        let field_offset = board.field_size + board.border_width;
+
         let mesh_map: HashMap<FigureKind, Mesh2dHandle> = figure_data
             .meshes
             .iter()
@@ -478,6 +448,9 @@ fn setup_board(
             .collect();
 
         for figure in &board.starting_position {
+            let x = figure.board_position.x as f32;
+            let y = figure.board_position.y as f32;
+
             let mesh = mesh_map
                 .get(&figure.kind)
                 .expect("there should be a mesh associated with the specified figure kind")
@@ -488,118 +461,28 @@ fn setup_board(
                 .expect("there should be a material associated with the specified side")
                 .clone();
 
-            commands.spawn((
-                MaterialMesh2dBundle {
-                    mesh,
-                    material,
-                    transform: Transform::from_translation(
-                        board
-                            .board_to_world_position(figure.board_position)
-                            .extend(2.),
-                    ),
-                    ..default()
-                },
-                *figure,
-            ));
-        }
-    }
-}
-
-fn select_figure(
-    q_figures: Query<(Entity, &Figure)>,
-    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    q_windows: Query<&Window, With<PrimaryWindow>>,
-    q_board: Query<&Board>,
-    buttons: Res<ButtonInput<MouseButton>>,
-    mut selected_figure: ResMut<SelectedFigure>,
-) {
-    if buttons.just_pressed(MouseButton::Left) {
-        let board = q_board.get_single().unwrap();
-        let upper_left = board.upper_left_field_position;
-        let field_offset = board.field_size + board.border_width;
-
-        let (camera, camera_transform) = q_camera.single();
-        if let Some(mouse_position) = q_windows
-            .single()
-            .cursor_position()
-            .and_then(|cursor| camera.viewport_to_world_2d(camera_transform, cursor))
-        {
-            let selected_field: BoardPosition = {
-                let x_adjusted = mouse_position.x - upper_left.x + board.field_size / 2.;
-                let y_adjusted = -(mouse_position.y - (upper_left.y + board.field_size / 2.));
-
-                let x: usize = x_adjusted as usize / field_offset as usize;
-                let y: usize = y_adjusted as usize / field_offset as usize;
-
-                BoardPosition { x, y }
-            };
-
-            *selected_figure = {
-                let mut result = SelectedFigure::None;
-                for (entity, figure) in &q_figures {
-                    if figure.board_position == selected_field {
-                        result = SelectedFigure::Some(entity);
-                    }
-                }
-
-                result
-            };
+            commands.spawn(MaterialMesh2dBundle {
+                mesh,
+                material,
+                transform: Transform::from_xyz(
+                    upper_left.x + x * field_offset,
+                    upper_left.y - y * field_offset,
+                    2.,
+                ),
+                ..default()
+            });
         }
     }
 }
 
 fn move_figure(
-    mut q_figure: Query<(&mut Figure, &mut Transform)>,
-    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    q_windows: Query<&Window, With<PrimaryWindow>>,
-    q_board: Query<&Board>,
-    buttons: Res<ButtonInput<MouseButton>>,
-    mut selected_figure: ResMut<SelectedFigure>,
+    mut q_figures: Query<(&mut Draggable, &mut Transform), With<Figure>>,
+    q_camera: Query<
+        (&Camera, &GlobalTransform),
+        q_windows: Query<&Window, With<PrimaryWindow>>,
+        With<MainCamera>,
+    >,
 ) {
-    if buttons.just_released(MouseButton::Left) {
-        let SelectedFigure::Some(figure_entity) = *selected_figure else {
-            return;
-        };
-
-        let (camera, camera_transform) = q_camera.single();
-        let Some(mouse_position) = q_windows
-            .single()
-            .cursor_position()
-            .and_then(|cursor| camera.viewport_to_world_2d(camera_transform, cursor))
-        else {
-            return;
-        };
-
-        let board = q_board.get_single().unwrap();
-
-        let targeted_field = board.world_to_bord_position(mouse_position);
-        let targeted_field_world_position = board.board_to_world_position(targeted_field);
-
-        let (mut figure, mut transform) = q_figure.get_mut(figure_entity).unwrap();
-
-        figure.board_position = targeted_field;
-        transform.translation = targeted_field_world_position.extend(2.);
-
-        *selected_figure = SelectedFigure::None;
-    }
-}
-
-fn visual_move_figure(
-    mut q_figure_transforms: Query<&mut Transform, With<Figure>>,
-    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    q_windows: Query<&Window, With<PrimaryWindow>>,
-    selected_figure: Res<SelectedFigure>,
-) {
-    if let SelectedFigure::Some(figure_entity) = *selected_figure {
-        let mut figure_transform = q_figure_transforms.get_mut(figure_entity).unwrap();
-
-        let (camera, camera_transform) = q_camera.single();
-        if let Some(mouse_position) = q_windows
-            .single()
-            .cursor_position()
-            .and_then(|cursor| camera.viewport_to_world_2d(camera_transform, cursor))
-        {
-            figure_transform.translation = mouse_position.clone().extend(3.);
-        }
-    }
+    // q_windows: Query<&Window, With<PrimaryWindow>>,
+    // q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 }

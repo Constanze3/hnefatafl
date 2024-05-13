@@ -118,10 +118,7 @@ fn main() {
         .insert_resource(figure_data)
         .insert_resource(clear_color)
         .add_systems(Startup, (setup, (spawn_board, setup_board).chain()))
-        .add_systems(
-            Update,
-            (close_on_esc, select_figure, visual_move_figure, move_figure),
-        )
+        .add_systems(Update, (close_on_esc, select_figure, visual_move_figure))
         .add_event::<CreateBoardEvent>()
         .run();
 }
@@ -290,7 +287,7 @@ impl Board {
         // TODO properly set end_positions!!!
     }
 
-    fn world_to_bord_position(&self, position: Vec2) -> BoardPosition {
+    fn world_to_bord_position(self, position: Vec2) -> BoardPosition {
         let upper_left = self.upper_left_field_position;
         let field_size = self.field_size;
         let field_offset = self.field_offset;
@@ -304,7 +301,7 @@ impl Board {
         BoardPosition { x, y }
     }
 
-    fn board_to_world_position(&self, position: BoardPosition) -> Vec2 {
+    fn board_to_world_position(self, position: BoardPosition) -> Vec2 {
         let upper_left = self.upper_left_field_position;
         let field_size = self.field_size;
         let field_offset = self.field_offset;
@@ -465,6 +462,9 @@ fn setup_board(
     for CreateBoardEvent(entity) in event.read() {
         let board = query.get(*entity).unwrap();
 
+        let upper_left = board.upper_left_field_position;
+        let field_offset = board.field_size + board.border_width;
+
         let mesh_map: HashMap<FigureKind, Mesh2dHandle> = figure_data
             .meshes
             .iter()
@@ -478,6 +478,9 @@ fn setup_board(
             .collect();
 
         for figure in &board.starting_position {
+            let x = figure.board_position.x as f32;
+            let y = figure.board_position.y as f32;
+
             let mesh = mesh_map
                 .get(&figure.kind)
                 .expect("there should be a mesh associated with the specified figure kind")
@@ -549,7 +552,7 @@ fn select_figure(
 }
 
 fn move_figure(
-    mut q_figure: Query<(&mut Figure, &mut Transform)>,
+    mut q_figure_transforms: Query<&mut Transform, With<Figure>>,
     q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     q_windows: Query<&Window, With<PrimaryWindow>>,
     q_board: Query<&Board>,
@@ -571,16 +574,21 @@ fn move_figure(
         };
 
         let board = q_board.get_single().unwrap();
+        let upper_left = board.upper_left_field_position;
+        let field_offset = board.field_size + board.border_width;
 
-        let targeted_field = board.world_to_bord_position(mouse_position);
-        let targeted_field_world_position = board.board_to_world_position(targeted_field);
+        let targeted_field = {
+            let x_adjusted = mouse_position.x - upper_left.x + board.field_size / 2.;
+            let y_adjusted = -(mouse_position.y - (upper_left.y + board.field_size / 2.));
 
-        let (mut figure, mut transform) = q_figure.get_mut(figure_entity).unwrap();
+            let x: usize = x_adjusted as usize / field_offset as usize;
+            let y: usize = y_adjusted as usize / field_offset as usize;
 
-        figure.board_position = targeted_field;
-        transform.translation = targeted_field_world_position.extend(2.);
+            BoardPosition { x, y }
+        };
 
-        *selected_figure = SelectedFigure::None;
+        let mut figure_transform = q_figure_transforms.get_mut(figure_entity);
+        figure_transform.translation = *selected_figure = SelectedFigure::None;
     }
 }
 
