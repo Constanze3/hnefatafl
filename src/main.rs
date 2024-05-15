@@ -65,10 +65,10 @@ fn main() {
         let (rows, cols, structure) = BoardData::parse_structure(BOARD).unwrap();
 
         let mut colors = HashMap::<u8, Color>::new();
-        colors.insert(0, Color::rgb(0.7, 0.7, 0.7));
+        colors.insert(0, Color::rgb(0.5, 0.5, 0.5));
         colors.insert(1, Color::rgb(0.3, 0.4, 1.0));
         colors.insert(2, Color::rgb(0.2, 0.2, 0.7));
-        colors.insert(3, Color::rgb(0.4, 0.2, 0.2));
+        colors.insert(3, Color::rgb(0.5, 0.3, 0.3));
         colors.insert(4, Color::rgb(0.6, 0.2, 0.2));
 
         let starting_position =
@@ -84,6 +84,8 @@ fn main() {
             border_width: 4.,
             outer_border_width: 12.,
             border_color: Color::rgb(0., 0., 0.),
+            display_z: 0.,
+            figure_display_z: 2.,
         }
     };
 
@@ -109,7 +111,7 @@ fn main() {
         }
     };
 
-    let clear_color = ClearColor(Color::hex("19335E").unwrap());
+    let clear_color = ClearColor(Color::rgb(1., 1., 1.));
 
     App::new()
         .add_plugins(DefaultPlugins)
@@ -145,6 +147,8 @@ struct BoardData {
     border_width: f32,
     outer_border_width: f32,
     border_color: Color,
+    figure_display_z: f32,
+    display_z: f32,
 }
 
 impl BoardData {
@@ -275,6 +279,8 @@ struct Board {
     cols: usize,
     starting_position: Vec<Figure>,
     end_positions: Vec<BoardPosition>,
+    figures: HashMap<BoardPosition, Entity>,
+
     field_size: f32,
     border_width: f32,
     outer_border_width: f32,
@@ -285,6 +291,7 @@ struct Board {
     width: f32,
     // height exluding outer border
     height: f32,
+    figure_display_z: f32,
 }
 
 impl Board {
@@ -294,17 +301,23 @@ impl Board {
             cols: data.cols,
             starting_position: data.starting_position.to_vec(),
             end_positions: vec![],
+            figures: HashMap::new(),
+
             field_size: data.field_size,
             border_width: data.border_width,
             outer_border_width: data.outer_border_width,
+
             field_offset: data.field_size + data.border_width,
             upper_left_field_position: upper_left,
             upper_left_corner_position: Vec2 {
                 x: upper_left.x - data.field_size / 2.,
                 y: upper_left.y + data.field_size / 2.,
             },
+
             width: data.cols as f32 * (data.field_size + data.border_width),
             height: data.rows as f32 * (data.field_size + data.border_width),
+
+            figure_display_z: data.figure_display_z,
         }
 
         // TODO properly set end_positions!!!
@@ -341,9 +354,13 @@ impl Board {
 
         Vec2 { x, y }
     }
+
+    fn add_figure(&mut self, position: BoardPosition, figure: Entity) {
+        self.figures.insert(position, figure);
+    }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 struct BoardPosition {
     x: usize,
     y: usize,
@@ -426,7 +443,7 @@ fn spawn_board(
             .spawn(MaterialMesh2dBundle {
                 mesh: Mesh2dHandle(meshes.add(Rectangle::new(size_x, size_y))),
                 material: materials.add(board_data.border_color),
-                transform: Transform::from_xyz(0., 0., 0.),
+                transform: Transform::from_xyz(0., 0., board_data.display_z - 1.),
                 ..default()
             })
             .id()
@@ -459,7 +476,7 @@ fn spawn_board(
                         transform: Transform::from_xyz(
                             offset_x + j * field_offset,
                             offset_y - i * field_offset,
-                            1.0,
+                            board_data.display_z,
                         ),
                         ..default()
                     })
@@ -491,12 +508,12 @@ fn spawn_board(
     board_entity_commands.push_children(&[background]);
     board_entity_commands.push_children(&fields[..]);
 
-    // send event so figures for this board can be spawned through spawn_figures
+    // send event so figures for this board can be spawned through setup_board
     event.send(CreateBoardEvent(board));
 }
 
 fn setup_board(
-    query: Query<&Board>,
+    mut q_board: Query<&mut Board>,
     figure_data: Res<FigureData>,
     mut event: EventReader<CreateBoardEvent>,
     mut commands: Commands,
@@ -504,7 +521,7 @@ fn setup_board(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     for CreateBoardEvent(entity) in event.read() {
-        let board = query.get(*entity).unwrap();
+        let mut board = q_board.get_mut(*entity).unwrap();
 
         let mesh_map: HashMap<FigureKind, Mesh2dHandle> = figure_data
             .meshes
@@ -518,7 +535,7 @@ fn setup_board(
             .map(|(side, color)| (*side, materials.add(*color)))
             .collect();
 
-        for figure in &board.starting_position {
+        for figure in &board.starting_position.clone() {
             let mesh = mesh_map
                 .get(&figure.kind)
                 .expect("there should be a mesh associated with the specified figure kind")
@@ -529,17 +546,23 @@ fn setup_board(
                 .expect("there should be a material associated with the specified side")
                 .clone();
 
-            commands.spawn((
-                MaterialMesh2dBundle {
-                    mesh,
-                    material,
-                    transform: Transform::from_translation(
-                        board.board_to_world(figure.board_position).extend(2.),
-                    ),
-                    ..default()
-                },
-                *figure,
-            ));
+            let figure_entity = commands
+                .spawn((
+                    MaterialMesh2dBundle {
+                        mesh,
+                        material,
+                        transform: Transform::from_translation(
+                            board
+                                .board_to_world(figure.board_position)
+                                .extend(board.figure_display_z),
+                        ),
+                        ..default()
+                    },
+                    *figure,
+                ))
+                .id();
+
+            board.add_figure(figure.board_position, figure_entity);
         }
     }
 }
@@ -591,7 +614,7 @@ fn visual_move_figure(
 
 fn move_figure(
     mut q_figure: Query<(&mut Figure, &mut Transform)>,
-    q_board: Query<&Board>,
+    mut q_board: Query<&mut Board>,
     buttons: Res<ButtonInput<MouseButton>>,
     mouse_position: Res<MousePosition>,
     mut selected_figure: ResMut<SelectedFigure>,
@@ -601,17 +624,35 @@ fn move_figure(
             return;
         };
 
-        let board = q_board.get_single().unwrap();
+        let mut board = q_board.get_single_mut().unwrap();
         let (mut figure, mut figure_transform) = q_figure.get_mut(figure_entity).unwrap();
 
-        if let Some(mouse_position) = mouse_position.0 {
-            if let Some(targeted_field) = board.world_to_board(mouse_position) {
-                // TODO validate move
-                figure.board_position = targeted_field;
+        _ = 'perform_move: {
+            let Some(mouse_position) = mouse_position.0 else {
+                break 'perform_move;
             };
-        }
 
-        figure_transform.translation = board.board_to_world(figure.board_position).extend(2.);
+            let Some(targeted_field) = board.world_to_board(mouse_position) else {
+                break 'perform_move;
+            };
+
+            let at_target = board.figures.get(&targeted_field);
+            if at_target != None {
+                // if there is something at the target the figure can't be moved there
+                break 'perform_move;
+            }
+
+            // update board.figures
+            if let Some(val) = board.figures.remove(&figure.board_position) {
+                board.figures.insert(targeted_field, val);
+            }
+            // update figure
+            figure.board_position = targeted_field;
+        };
+
+        figure_transform.translation = board
+            .board_to_world(figure.board_position)
+            .extend(board.figure_display_z);
 
         *selected_figure = SelectedFigure::None;
     }
