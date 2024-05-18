@@ -1,3 +1,5 @@
+use core::panic;
+
 use bevy::{
     math::Vec2,
     prelude::*,
@@ -5,6 +7,7 @@ use bevy::{
     utils::HashMap,
     window::{close_on_esc, PrimaryWindow},
 };
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 const BOARD: &'static str = "
 40033333004
@@ -83,7 +86,7 @@ fn main() {
             field_colors: colors,
             border_width: 4.,
             outer_border_width: 12.,
-            border_color: Color::rgb(0., 0., 0.),
+            border_color: Color::rgb_u8(42, 37, 37),
             display_z: 0.,
             figure_display_z: 2.,
         }
@@ -111,10 +114,11 @@ fn main() {
         }
     };
 
-    let clear_color = ClearColor(Color::rgb(1., 1., 1.));
+    let clear_color = ClearColor(Color::rgb(0., 0., 0.));
 
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugins(WorldInspectorPlugin::new())
         .init_resource::<SelectedFigure>()
         .init_resource::<MousePosition>()
         .insert_resource(board_data)
@@ -125,11 +129,18 @@ fn main() {
             Update,
             (
                 update_mouse_position,
-                (close_on_esc, select_figure, visual_move_figure, move_figure)
+                (
+                    close_on_esc,
+                    (select_figure, spawn_highlights).chain(),
+                    visual_move_figure,
+                    (move_figure, despawn_highlights).chain(),
+                )
                     .after(update_mouse_position),
             ),
         )
         .add_event::<CreateBoardEvent>()
+        .add_event::<SpawnHighlightsEvent>()
+        .add_event::<DespawnHighlightsEvent>()
         .run();
 }
 
@@ -294,6 +305,14 @@ struct Board {
     figure_display_z: f32,
 }
 
+#[derive(Component, Clone)]
+struct BoardHighlights {
+    mesh: Handle<Mesh>,
+    color: Handle<ColorMaterial>,
+    z: f32,
+    entity: Option<Entity>,
+}
+
 impl Board {
     fn new(data: &BoardData, upper_left: Vec2) -> Self {
         Self {
@@ -321,6 +340,10 @@ impl Board {
         }
 
         // TODO properly set end_positions!!!
+    }
+
+    fn add_figure(&mut self, position: BoardPosition, figure: Entity) {
+        self.figures.insert(position, figure);
     }
 
     /// Converts a world position to the position of a field on the board.
@@ -355,8 +378,56 @@ impl Board {
         Vec2 { x, y }
     }
 
-    fn add_figure(&mut self, position: BoardPosition, figure: Entity) {
-        self.figures.insert(position, figure);
+    fn possible_moves(&self, figure: Figure) -> Result<Vec<BoardPosition>, &str> {
+        let position = figure.board_position;
+
+        if self.figures.get(&position) == None {
+            return Err("figure isn't on the board");
+        }
+
+        let mut result: Vec<BoardPosition> = vec![];
+
+        for x in (0..position.x).rev() {
+            let target_position = BoardPosition { x, y: position.y };
+
+            if self.figures.get(&target_position) != None {
+                break;
+            } else {
+                result.push(target_position);
+            }
+        }
+
+        for x in (position.x + 1)..self.cols {
+            let target_position = BoardPosition { x, y: position.y };
+
+            if self.figures.get(&target_position) != None {
+                break;
+            } else {
+                result.push(target_position);
+            }
+        }
+
+        for y in (0..position.y).rev() {
+            let target_position = BoardPosition { x: position.x, y };
+
+            if self.figures.get(&target_position) != None {
+                break;
+            } else {
+                result.push(target_position);
+            }
+        }
+
+        for y in (position.y + 1)..self.rows {
+            let target_position = BoardPosition { x: position.x, y };
+
+            if self.figures.get(&target_position) != None {
+                break;
+            } else {
+                result.push(target_position);
+            }
+        }
+
+        Ok(result)
     }
 }
 
@@ -440,17 +511,22 @@ fn spawn_board(
         let size_y = total_height - 2. * border_width + 2. * outer_border_width;
 
         commands
-            .spawn(MaterialMesh2dBundle {
-                mesh: Mesh2dHandle(meshes.add(Rectangle::new(size_x, size_y))),
-                material: materials.add(board_data.border_color),
-                transform: Transform::from_xyz(0., 0., board_data.display_z - 1.),
-                ..default()
-            })
+            .spawn((
+                Name::new("Background"),
+                MaterialMesh2dBundle {
+                    mesh: Mesh2dHandle(meshes.add(Rectangle::new(size_x, size_y))),
+                    material: materials.add(board_data.border_color),
+                    transform: Transform::from_xyz(0., 0., board_data.display_z - 1.),
+                    ..default()
+                },
+            ))
             .id()
     };
 
     let fields = {
-        let mut result: Vec<Entity> = vec![];
+        let result = commands
+            .spawn((Name::new("Fields"), SpatialBundle::default()))
+            .id();
 
         let color_map: HashMap<u8, Handle<ColorMaterial>> = board_data
             .field_colors
@@ -470,23 +546,33 @@ fn spawn_board(
                 let j = j as f32;
 
                 let field = commands
-                    .spawn(MaterialMesh2dBundle {
-                        mesh: field.clone(),
-                        material: color,
-                        transform: Transform::from_xyz(
-                            offset_x + j * field_offset,
-                            offset_y - i * field_offset,
-                            board_data.display_z,
-                        ),
-                        ..default()
-                    })
+                    .spawn((
+                        Name::new("Field"),
+                        MaterialMesh2dBundle {
+                            mesh: field.clone(),
+                            material: color,
+                            transform: Transform::from_xyz(
+                                offset_x + j * field_offset,
+                                offset_y - i * field_offset,
+                                board_data.display_z,
+                            ),
+                            ..default()
+                        },
+                    ))
                     .id();
 
-                result.push(field);
+                commands.entity(result).add_child(field);
             }
         }
 
         result
+    };
+
+    let board_highlight = BoardHighlights {
+        mesh: meshes.add(Circle::new(0.2 * board_data.field_size)),
+        color: materials.add(Color::rgba(0., 0., 0., 0.6)),
+        z: 4.,
+        entity: None,
     };
 
     let board = {
@@ -495,20 +581,20 @@ fn spawn_board(
             y: offset_y,
         };
 
-        commands
+        let result = commands
             .spawn((
+                Name::new("Board"),
                 SpatialBundle::default(),
                 Board::new(&board_data, upper_left),
+                board_highlight,
             ))
-            .id()
+            .id();
+
+        commands.entity(result).push_children(&[background, fields]);
+
+        result
     };
 
-    // add all fields and the background as child entities to the board
-    let mut board_entity_commands = commands.entity(board);
-    board_entity_commands.push_children(&[background]);
-    board_entity_commands.push_children(&fields[..]);
-
-    // send event so figures for this board can be spawned through setup_board
     event.send(CreateBoardEvent(board));
 }
 
@@ -548,6 +634,7 @@ fn setup_board(
 
             let figure_entity = commands
                 .spawn((
+                    Name::new("Figure"),
                     MaterialMesh2dBundle {
                         mesh,
                         material,
@@ -569,31 +656,118 @@ fn setup_board(
 
 fn select_figure(
     q_figures: Query<(Entity, &Figure)>,
-    q_board: Query<&Board>,
+    q_board: Query<(Entity, &Board)>,
     buttons: Res<ButtonInput<MouseButton>>,
     mouse_position: Res<MousePosition>,
     mut selected_figure: ResMut<SelectedFigure>,
+    mut highlights_event: EventWriter<SpawnHighlightsEvent>,
 ) {
     if buttons.just_pressed(MouseButton::Left) {
         let Some(mouse_position) = mouse_position.0 else {
             return;
         };
 
-        let board = q_board.get_single().unwrap();
+        let (board_entity, board) = q_board.get_single().unwrap();
         let Some(selected_field) = board.world_to_board(mouse_position) else {
             return;
         };
 
         *selected_figure = {
             let mut result = SelectedFigure::None;
-            for (entity, figure) in &q_figures {
+            for (figure_entity, figure) in &q_figures {
                 if figure.board_position == selected_field {
-                    result = SelectedFigure::Some(entity);
+                    result = SelectedFigure::Some(figure_entity);
+
+                    highlights_event.send(SpawnHighlightsEvent {
+                        board_entity,
+                        positions: board.possible_moves(*figure).unwrap(),
+                    });
+
+                    break;
                 }
             }
 
             result
         };
+    }
+}
+
+#[derive(Event)]
+struct SpawnHighlightsEvent {
+    board_entity: Entity,
+    positions: Vec<BoardPosition>,
+}
+
+#[derive(Event)]
+struct DespawnHighlightsEvent {
+    board_entity: Entity,
+}
+
+/// Spawns highlights for the specified positions of the board
+///
+/// Unchecked pre: The positions in the SpawnHighightEvent are on the board
+fn spawn_highlights(
+    mut q_board_highlights: Query<(&Board, &mut BoardHighlights)>,
+    mut event: EventReader<SpawnHighlightsEvent>,
+    mut commands: Commands,
+) {
+    for ev in event.read() {
+        let Ok((board, mut highlights)) = q_board_highlights.get_mut(ev.board_entity) else {
+            return;
+        };
+
+        if highlights.entity != None {
+            panic!(
+                "new highlights should not be spawned for the board when highlights already exist"
+            );
+        }
+
+        let parent = commands
+            .spawn((Name::new("Highlights"), SpatialBundle::default()))
+            .id();
+        commands.entity(ev.board_entity).push_children(&[parent]);
+
+        let mesh = &highlights.mesh;
+        let material = &highlights.color;
+
+        for position in &ev.positions {
+            let highlight = commands
+                .spawn((
+                    Name::new("highlight"),
+                    MaterialMesh2dBundle {
+                        mesh: mesh.clone().into(),
+                        material: material.clone(),
+                        transform: Transform::from_translation(
+                            board.board_to_world(*position).extend(highlights.z),
+                        ),
+                        ..default()
+                    },
+                ))
+                .id();
+
+            commands.entity(parent).push_children(&[highlight]);
+        }
+
+        highlights.entity = Some(parent);
+    }
+}
+
+fn despawn_highlights(
+    mut q_highlights: Query<&mut BoardHighlights, With<Board>>,
+    mut event: EventReader<DespawnHighlightsEvent>,
+    mut commands: Commands,
+) {
+    for ev in event.read() {
+        let Ok(mut highlights) = q_highlights.get_mut(ev.board_entity) else {
+            return;
+        };
+
+        let e = highlights
+            .entity
+            .expect("non-existent highlights shouldn't be deleted");
+
+        commands.entity(e).despawn_recursive();
+        highlights.entity = None;
     }
 }
 
@@ -608,23 +782,24 @@ fn visual_move_figure(
         };
 
         let mut figure_transform = q_figure_transforms.get_mut(figure_entity).unwrap();
-        figure_transform.translation = mouse_position.clone().extend(3.);
+        figure_transform.translation = mouse_position.clone().extend(5.);
     };
 }
 
 fn move_figure(
     mut q_figure: Query<(&mut Figure, &mut Transform)>,
-    mut q_board: Query<&mut Board>,
+    mut q_board: Query<(Entity, &mut Board)>,
     buttons: Res<ButtonInput<MouseButton>>,
     mouse_position: Res<MousePosition>,
     mut selected_figure: ResMut<SelectedFigure>,
+    mut highlights_event: EventWriter<DespawnHighlightsEvent>,
 ) {
     if buttons.just_released(MouseButton::Left) {
         let SelectedFigure::Some(figure_entity) = *selected_figure else {
             return;
         };
 
-        let mut board = q_board.get_single_mut().unwrap();
+        let (board_entity, mut board) = q_board.get_single_mut().unwrap();
         let (mut figure, mut figure_transform) = q_figure.get_mut(figure_entity).unwrap();
 
         _ = 'perform_move: {
@@ -655,5 +830,6 @@ fn move_figure(
             .extend(board.figure_display_z);
 
         *selected_figure = SelectedFigure::None;
+        highlights_event.send(DespawnHighlightsEvent { board_entity });
     }
 }
