@@ -273,9 +273,15 @@ struct FigureData {
     meshes: HashMap<FigureKind, Mesh>,
 }
 
-#[derive(Resource, Default, Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
+struct SelectedFigure_ {
+    entity: Entity,
+    possible_moves: Vec<BoardPosition>,
+}
+
+#[derive(Resource, Default, Debug, Clone)]
 enum SelectedFigure {
-    Some(Entity),
+    Some(SelectedFigure_),
     #[default]
     None,
 }
@@ -315,11 +321,20 @@ struct BoardHighlights {
 
 impl Board {
     fn new(data: &BoardData, upper_left: Vec2) -> Self {
+        let mut end_positions: Vec<BoardPosition> = vec![];
+        for (y, row) in data.structure.iter().enumerate() {
+            for (x, element) in row.iter().enumerate() {
+                if *element == 4 {
+                    end_positions.push(BoardPosition { x, y })
+                }
+            }
+        }
+
         Self {
             rows: data.rows,
             cols: data.cols,
             starting_position: data.starting_position.to_vec(),
-            end_positions: vec![],
+            end_positions,
             figures: HashMap::new(),
 
             field_size: data.field_size,
@@ -338,8 +353,6 @@ impl Board {
 
             figure_display_z: data.figure_display_z,
         }
-
-        // TODO properly set end_positions!!!
     }
 
     fn add_figure(&mut self, position: BoardPosition, figure: Entity) {
@@ -385,45 +398,53 @@ impl Board {
             return Err("figure isn't on the board");
         }
 
+        let is_valid = |target_position: &BoardPosition| -> bool {
+            let figure_at_target = self.figures.get(target_position) != None;
+            let is_end_pos = self.end_positions.contains(target_position);
+            let is_king = figure.kind == FigureKind::King;
+
+            return !figure_at_target && (!is_end_pos || is_king);
+        };
+
         let mut result: Vec<BoardPosition> = vec![];
 
         for x in (0..position.x).rev() {
             let target_position = BoardPosition { x, y: position.y };
 
-            if self.figures.get(&target_position) != None {
-                break;
-            } else {
+            if is_valid(&target_position) {
                 result.push(target_position);
+            } else {
+                break;
             }
         }
 
         for x in (position.x + 1)..self.cols {
             let target_position = BoardPosition { x, y: position.y };
 
-            if self.figures.get(&target_position) != None {
-                break;
-            } else {
+            if is_valid(&target_position) {
                 result.push(target_position);
+            } else {
+                break;
             }
         }
 
         for y in (0..position.y).rev() {
             let target_position = BoardPosition { x: position.x, y };
 
-            if self.figures.get(&target_position) != None {
-                break;
-            } else {
+            if is_valid(&target_position) {
                 result.push(target_position);
+            } else {
+                break;
             }
         }
 
         for y in (position.y + 1)..self.rows {
             let target_position = BoardPosition { x: position.x, y };
 
-            if self.figures.get(&target_position) != None {
-                break;
-            } else {
+            if is_valid(&target_position) {
                 result.push(target_position);
+            } else {
+                break;
             }
         }
 
@@ -676,11 +697,16 @@ fn select_figure(
             let mut result = SelectedFigure::None;
             for (figure_entity, figure) in &q_figures {
                 if figure.board_position == selected_field {
-                    result = SelectedFigure::Some(figure_entity);
+                    let possible_moves = board.possible_moves(*figure).unwrap();
+
+                    result = SelectedFigure::Some(SelectedFigure_ {
+                        entity: figure_entity,
+                        possible_moves: possible_moves.clone(),
+                    });
 
                     highlights_event.send(SpawnHighlightsEvent {
                         board_entity,
-                        positions: board.possible_moves(*figure).unwrap(),
+                        positions: possible_moves.clone(),
                     });
 
                     break;
@@ -715,12 +741,6 @@ fn spawn_highlights(
         let Ok((board, mut highlights)) = q_board_highlights.get_mut(ev.board_entity) else {
             return;
         };
-
-        if highlights.entity != None {
-            panic!(
-                "new highlights should not be spawned for the board when highlights already exist"
-            );
-        }
 
         let parent = commands
             .spawn((Name::new("Highlights"), SpatialBundle::default()))
@@ -776,7 +796,11 @@ fn visual_move_figure(
     mouse_position: Res<MousePosition>,
     selected_figure: Res<SelectedFigure>,
 ) {
-    if let SelectedFigure::Some(figure_entity) = *selected_figure {
+    if let SelectedFigure::Some(SelectedFigure_ {
+        entity: figure_entity,
+        possible_moves: _,
+    }) = *selected_figure
+    {
         let Some(mouse_position) = mouse_position.0 else {
             return;
         };
@@ -795,7 +819,11 @@ fn move_figure(
     mut highlights_event: EventWriter<DespawnHighlightsEvent>,
 ) {
     if buttons.just_released(MouseButton::Left) {
-        let SelectedFigure::Some(figure_entity) = *selected_figure else {
+        let SelectedFigure::Some(SelectedFigure_ {
+            entity: figure_entity,
+            possible_moves,
+        }) = selected_figure.clone()
+        else {
             return;
         };
 
@@ -814,6 +842,10 @@ fn move_figure(
             let at_target = board.figures.get(&targeted_field);
             if at_target != None {
                 // if there is something at the target the figure can't be moved there
+                break 'perform_move;
+            }
+
+            if !possible_moves.contains(&targeted_field) {
                 break 'perform_move;
             }
 
