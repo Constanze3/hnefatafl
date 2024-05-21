@@ -1,5 +1,3 @@
-use core::panic;
-
 use bevy::{
     math::Vec2,
     prelude::*,
@@ -133,7 +131,7 @@ fn main() {
                     close_on_esc,
                     (select_figure, spawn_highlights).chain(),
                     visual_move_figure,
-                    (move_figure, despawn_highlights).chain(),
+                    (move_figure, capture_check_figures, despawn_highlights).chain(),
                 )
                     .after(update_mouse_position),
             ),
@@ -141,6 +139,7 @@ fn main() {
         .add_event::<CreateBoardEvent>()
         .add_event::<SpawnHighlightsEvent>()
         .add_event::<DespawnHighlightsEvent>()
+        .add_event::<CaptureCheckEvent>()
         .run();
 }
 
@@ -319,6 +318,11 @@ struct BoardHighlights {
     entity: Option<Entity>,
 }
 
+enum Axis {
+    X,
+    Y,
+}
+
 impl Board {
     fn new(data: &BoardData, upper_left: Vec2) -> Self {
         let mut end_positions: Vec<BoardPosition> = vec![];
@@ -391,64 +395,109 @@ impl Board {
         Vec2 { x, y }
     }
 
+    fn is_valid_move(&self, figure: Figure, targeted_position: &BoardPosition) -> bool {
+        let figure_at_target = self.figures.get(targeted_position) != None;
+        let is_end_pos = self.end_positions.contains(targeted_position);
+        let is_king = figure.kind == FigureKind::King;
+
+        return !figure_at_target && (!is_end_pos || is_king);
+    }
+
+    /// Helper function for possible_moves.
+    /// It checks on an axis whether the positions provided in the range are valid,
+    /// when a position isn't valid the checking stops.
+    fn valid_moves_in_range<T>(&self, figure: Figure, range: T, axis: Axis) -> Vec<BoardPosition>
+    where
+        T: IntoIterator<Item = usize>,
+    {
+        let mut result: Vec<BoardPosition> = vec![];
+
+        let position = figure.board_position;
+
+        for i in range {
+            let targeted_position = match axis {
+                Axis::X => BoardPosition {
+                    x: i,
+                    y: position.y,
+                },
+                Axis::Y => BoardPosition {
+                    x: position.x,
+                    y: i,
+                },
+            };
+
+            if self.is_valid_move(figure, &targeted_position) {
+                result.push(targeted_position);
+            } else {
+                break;
+            }
+        }
+
+        return result;
+    }
+
     fn possible_moves(&self, figure: Figure) -> Result<Vec<BoardPosition>, &str> {
         let position = figure.board_position;
 
-        if self.figures.get(&position) == None {
+        if !self.figures.contains_key(&position) {
             return Err("figure isn't on the board");
         }
 
-        let is_valid = |target_position: &BoardPosition| -> bool {
-            let figure_at_target = self.figures.get(target_position) != None;
-            let is_end_pos = self.end_positions.contains(target_position);
-            let is_king = figure.kind == FigureKind::King;
-
-            return !figure_at_target && (!is_end_pos || is_king);
-        };
-
         let mut result: Vec<BoardPosition> = vec![];
 
-        for x in (0..position.x).rev() {
-            let target_position = BoardPosition { x, y: position.y };
+        result.extend(self.valid_moves_in_range(figure, (0..position.x).rev(), Axis::X));
+        result.extend(self.valid_moves_in_range(figure, (position.x + 1)..self.cols, Axis::X));
 
-            if is_valid(&target_position) {
-                result.push(target_position);
-            } else {
-                break;
-            }
-        }
-
-        for x in (position.x + 1)..self.cols {
-            let target_position = BoardPosition { x, y: position.y };
-
-            if is_valid(&target_position) {
-                result.push(target_position);
-            } else {
-                break;
-            }
-        }
-
-        for y in (0..position.y).rev() {
-            let target_position = BoardPosition { x: position.x, y };
-
-            if is_valid(&target_position) {
-                result.push(target_position);
-            } else {
-                break;
-            }
-        }
-
-        for y in (position.y + 1)..self.rows {
-            let target_position = BoardPosition { x: position.x, y };
-
-            if is_valid(&target_position) {
-                result.push(target_position);
-            } else {
-                break;
-            }
-        }
+        result.extend(self.valid_moves_in_range(figure, (0..position.y).rev(), Axis::Y));
+        result.extend(self.valid_moves_in_range(figure, (position.y + 1)..self.rows, Axis::Y));
 
         Ok(result)
+    }
+
+    fn get_neighbors(&self, position: BoardPosition) -> Vec<Entity> {
+        let mut result: Vec<Entity> = vec![];
+
+        // left
+        if 0 <= position.x as isize - 1 {
+            if let Some(figure_entity) = self.figures.get(&BoardPosition {
+                x: position.x - 1,
+                y: position.y,
+            }) {
+                result.push(*figure_entity);
+            }
+        }
+
+        // right
+        if position.x + 1 < self.rows {
+            if let Some(figure_entity) = self.figures.get(&BoardPosition {
+                x: position.x + 1,
+                y: position.y,
+            }) {
+                result.push(*figure_entity);
+            }
+        }
+
+        // bottom
+        if 0 <= position.y as isize - 1 {
+            if let Some(figure_entity) = self.figures.get(&BoardPosition {
+                x: position.x,
+                y: position.y - 1,
+            }) {
+                result.push(*figure_entity);
+            }
+        }
+
+        // top
+        if position.y + 1 < self.cols {
+            if let Some(figure_entity) = self.figures.get(&BoardPosition {
+                x: position.x,
+                y: position.y + 1,
+            }) {
+                result.push(*figure_entity);
+            }
+        }
+
+        result
     }
 }
 
@@ -817,6 +866,7 @@ fn move_figure(
     mouse_position: Res<MousePosition>,
     mut selected_figure: ResMut<SelectedFigure>,
     mut highlights_event: EventWriter<DespawnHighlightsEvent>,
+    mut capture_event: EventWriter<CaptureCheckEvent>,
 ) {
     if buttons.just_released(MouseButton::Left) {
         let SelectedFigure::Some(SelectedFigure_ {
@@ -828,7 +878,6 @@ fn move_figure(
         };
 
         let (board_entity, mut board) = q_board.get_single_mut().unwrap();
-        let (mut figure, mut figure_transform) = q_figure.get_mut(figure_entity).unwrap();
 
         _ = 'perform_move: {
             let Some(mouse_position) = mouse_position.0 else {
@@ -849,19 +898,106 @@ fn move_figure(
                 break 'perform_move;
             }
 
+            let (mut figure, _) = q_figure.get_mut(figure_entity).unwrap();
+
             // update board.figures
             if let Some(val) = board.figures.remove(&figure.board_position) {
                 board.figures.insert(targeted_field, val);
             }
+
             // update figure
             figure.board_position = targeted_field;
+
+            // check for captures
+            let neighbor_entities = board.get_neighbors(figure.board_position);
+            capture_event.send(CaptureCheckEvent(neighbor_entities));
         };
 
+        let (figure, mut figure_transform) = q_figure.get_mut(figure_entity).unwrap();
         figure_transform.translation = board
             .board_to_world(figure.board_position)
             .extend(board.figure_display_z);
 
         *selected_figure = SelectedFigure::None;
         highlights_event.send(DespawnHighlightsEvent { board_entity });
+    }
+}
+
+#[derive(Event, Clone)]
+struct CaptureCheckEvent(Vec<Entity>);
+
+/// FigureKind::Soldier is captured if it surrounded on 2 opposite sides
+/// For FigureKind::Kind if it is surrounded on all 4 sides
+/// (by different side figures/walls/end positions)
+fn capture_check_figures(
+    q_figure: Query<&Figure>,
+    mut q_board: Query<&mut Board>,
+    mut commands: Commands,
+    mut event: EventReader<CaptureCheckEvent>,
+) {
+    let mut board = q_board.get_single_mut().unwrap();
+    for ev in event.read() {
+        for figure_entity in &ev.0 {
+            let figure = q_figure.get(*figure_entity).unwrap();
+            let position = figure.board_position;
+
+            if !board.figures.contains_key(&position) {
+                panic!("figure isn't on the board");
+            }
+
+            let is_blocked = |position: &BoardPosition| -> bool {
+                let contains_enemy_figure = {
+                    if let Some(blocking_figure_entity) = board.figures.get(position) {
+                        let blocking_figure = q_figure.get(*blocking_figure_entity).unwrap();
+                        if blocking_figure.side != figure.side {
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                };
+
+                contains_enemy_figure || board.end_positions.contains(position)
+            };
+
+            let left_blocked = position.x as isize - 1 == -1
+                || is_blocked(&BoardPosition {
+                    x: position.x - 1,
+                    y: position.y,
+                });
+
+            let right_blocked = position.x + 1 == board.cols
+                || is_blocked(&BoardPosition {
+                    x: position.x + 1,
+                    y: position.y,
+                });
+
+            let bottom_blocked = position.y as isize - 1 == -1
+                || is_blocked(&BoardPosition {
+                    x: position.x,
+                    y: position.y - 1,
+                });
+
+            let top_blocked = position.y + 1 == board.rows
+                || is_blocked(&BoardPosition {
+                    x: position.x,
+                    y: position.y + 1,
+                });
+
+            let x_blocked = left_blocked && right_blocked;
+            let y_blocked = bottom_blocked && top_blocked;
+
+            let should_capture = match figure.kind {
+                FigureKind::Soldier => x_blocked || y_blocked,
+                FigureKind::King => x_blocked && y_blocked,
+            };
+
+            if should_capture {
+                board.figures.remove(&figure.board_position);
+                commands.entity(*figure_entity).despawn();
+            }
+        }
     }
 }
