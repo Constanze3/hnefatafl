@@ -17,7 +17,19 @@ pub struct SelectedFigure {
     pub possible_moves: Option<Vec<Position>>,
 }
 
-#[derive(Component)]
+pub struct BoardOptions {
+    pub rows: usize,
+    pub cols: usize,
+    pub throne_position: Position,
+    pub end_positions: Vec<Position>,
+    pub figures: HashMap<Position, Entity>,
+    pub field_size: f32,
+    pub border_width: f32,
+    pub outer_border_width: f32,
+    pub figures_z: f32,
+}
+
+#[derive(Component, Clone)]
 pub struct Board {
     pub rows: usize,
     pub cols: usize,
@@ -29,26 +41,79 @@ pub struct Board {
     pub figures: HashMap<Position, Entity>,
 
     // the width/height of a field of the board
-    field_size: f32,
+    pub field_size: f32,
     // the width of the border inbetween the fields
-    border_width: f32,
+    pub border_width: f32,
     // the width of the outer border of the board
-    outer_border_width: f32,
+    pub outer_border_width: f32,
     // distance of 2 neighbor fields, field_size + border_width
-    field_offset: f32,
-    // the position of the field at the upper left corner
-    upper_left_field_position: Vec2,
-    // the position of the upper-left corner of the board excluding the outer border
-    upper_left_corner_position: Vec2,
+    pub field_offset: f32,
     // width of the board excluding outer border
-    width: f32,
+    pub width: f32,
     // height of the board exluding outer border
-    height: f32,
+    pub height: f32,
+    // the position of the upper-left corner of the board excluding the outer border
+    pub upper_left_corner_position: Vec2,
+    // the position of the field at the upper left corner
+    pub upper_left_field_position: Vec2,
+
     // the z-axis coordinate figures displayed on the board should have
-    figure_display_z: f32,
+    pub figures_z: f32,
 }
 
 impl Board {
+    /// Creates a new Board.
+    pub fn new(options: BoardOptions) -> Self {
+        let rows = options.rows;
+        let cols = options.cols;
+
+        let throne_position = options.throne_position;
+        let end_positions = options.end_positions;
+
+        let figures = options.figures;
+
+        let field_size = options.field_size;
+        let border_width = options.border_width;
+        let outer_border_width = options.outer_border_width;
+        let figures_z = options.figures_z;
+
+        let field_offset = field_size + border_width;
+        let width = cols as f32 * field_offset - border_width;
+        let height = rows as f32 * field_offset - border_width;
+
+        let upper_left_corner_position = Vec2 {
+            x: -width / 2.,
+            y: height / 2.,
+        };
+
+        let upper_left_field_position = Vec2 {
+            x: upper_left_corner_position.x + field_size / 2.,
+            y: upper_left_corner_position.y - field_size / 2.,
+        };
+
+        Self {
+            rows,
+            cols,
+
+            throne_position,
+            end_positions,
+
+            figures,
+
+            field_size,
+            border_width,
+            outer_border_width,
+
+            field_offset,
+            width,
+            height,
+            upper_left_corner_position,
+            upper_left_field_position,
+
+            figures_z,
+        }
+    }
+
     /// Converts a world position to the position of a field on the board.
     pub fn world_to_board(&self, position: Vec2) -> Option<Position> {
         let ulc = self.upper_left_corner_position;
