@@ -7,118 +7,10 @@ use bevy::{
     utils::HashMap,
     window::{close_on_esc, PrimaryWindow},
 };
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
-
-const BOARD: &'static str = "
-40033333004
-00000300000
-00000000000
-30000200003
-30002220003
-33022122033
-30002220003
-30000200003
-00000000000
-00000300000
-40033333004
-";
-
-const STARTING_POSITION: &'static str = "
-a s 0 3
-a s 0 4
-a s 0 5
-a s 0 6
-a s 0 7
-a s 1 5
-a s 3 0
-d s 3 5
-a s 3 10
-a s 4 0
-d s 4 4
-d s 4 5
-d s 4 6
-a s 4 10
-a s 5 0
-a s 5 1
-d s 5 3
-d s 5 4
-d k 5 5
-d s 5 6
-d s 5 7
-a s 5 9
-a s 5 10
-a s 6 0 
-d s 6 4
-d s 6 5
-d s 6 6
-a s 6 10
-a s 7 0
-d s 7 5
-a s 7 10
-a s 9 5
-a s 10 3
-a s 10 4
-a s 10 5
-a s 10 6
-a s 10 7
-";
 
 fn main() {
-    let board_data = {
-        let (rows, cols, structure) = BoardData::parse_structure(BOARD).unwrap();
-
-        let mut colors = HashMap::<u8, Color>::new();
-        colors.insert(0, Color::rgb(0.5, 0.5, 0.5));
-        colors.insert(1, Color::rgb(0.3, 0.4, 1.0));
-        colors.insert(2, Color::rgb(0.2, 0.2, 0.7));
-        colors.insert(3, Color::rgb(0.5, 0.3, 0.3));
-        colors.insert(4, Color::rgb(0.6, 0.2, 0.2));
-
-        let starting_position =
-            BoardData::parse_arrangement(rows, cols, STARTING_POSITION).unwrap();
-
-        BoardData {
-            rows,
-            cols,
-            structure,
-            starting_position,
-            field_size: 50.,
-            field_colors: colors,
-            border_width: 4.,
-            outer_border_width: 12.,
-            border_color: Color::rgb_u8(42, 37, 37),
-            display_z: 0.,
-            figure_display_z: 2.,
-        }
-    };
-
-    let figure_data = {
-        let mut colors = HashMap::<Side, Color>::new();
-        colors.insert(Side::Attacker, Color::rgb(0., 0., 0.));
-        colors.insert(Side::Defender, Color::rgb(1., 1., 1.));
-
-        let mut shapes = HashMap::<FigureKind, Mesh>::new();
-        let square_size = 0.65 * board_data.field_size;
-        shapes.insert(
-            FigureKind::Soldier,
-            Rectangle::new(square_size, square_size).into(),
-        );
-        shapes.insert(
-            FigureKind::King,
-            Circle::new(0.4 * board_data.field_size).into(),
-        );
-
-        FigureData {
-            colors,
-            meshes: shapes,
-        }
-    };
-
-    let clear_color = ClearColor(Color::rgb(0., 0., 0.));
-
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(WorldInspectorPlugin::new())
         .init_resource::<SelectedFigure>()
         .init_resource::<MousePosition>()
         .insert_resource(board_data)
@@ -154,33 +46,12 @@ fn main() {
         .run();
 }
 
-// RESOURCES
-
-#[derive(Debug, Clone)]
-struct SelectedFigure_ {
-    entity: Entity,
-    possible_moves: Vec<BoardPosition>,
-}
-
-#[derive(Resource, Default, Debug, Clone)]
-enum SelectedFigure {
-    Some(SelectedFigure_),
-    #[default]
-    None,
-}
-
-// COMPONENTS
-
 // EVENTS
 
 #[derive(Event)]
 struct CreateBoardEvent(Entity);
 
 // SYSTEMS
-
-fn setup(mut commands: Commands) {
-    commands.spawn((Camera2dBundle::default(), MainCamera));
-}
 
 fn select_figure(
     q_figures: Query<(Entity, &Figure)>,

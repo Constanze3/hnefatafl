@@ -5,41 +5,23 @@ use bevy::{
 
 use crate::game::tafl::*;
 
-#[derive(Event)]
-pub struct SpawnTaflEvent(SpawnBoardEvent, SpawnFiguresEvent);
-
 #[derive(Event, Clone)]
 pub struct SpawnBoardEvent {
+    pub id: SimpleId,
     pub position: Vec3,
     pub board: Board,
-    pub field_materials: HashMap<Position, ColorMaterial>,
+    pub field_materials: HashMap<Position, Handle<ColorMaterial>>,
     pub border_z: f32,
-    pub border_material: ColorMaterial,
-    pub highlight_mesh: Mesh,
-    pub highlight_material: ColorMaterial,
+    pub border_material: Handle<ColorMaterial>,
+    pub highlight_mesh: Handle<Mesh>,
+    pub highlight_material: Handle<ColorMaterial>,
     pub highlight_z: f32,
-}
-
-#[derive(Event, Clone)]
-pub struct SpawnFiguresEvent {}
-
-/// Spawns a "tafl" board and figures.
-pub fn spawn_tafl(
-    mut event: EventReader<SpawnTaflEvent>,
-    mut spawn_board_event: EventWriter<SpawnBoardEvent>,
-    mut spawn_figures_event: EventWriter<SpawnFiguresEvent>,
-) {
-    for ev in event.read() {
-        spawn_board_event.send(ev.0.clone());
-        spawn_figures_event.send(ev.1.clone());
-    }
 }
 
 pub fn spawn_board(
     mut event: EventReader<SpawnBoardEvent>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     for ev in event.read() {
         let borders = {
@@ -53,7 +35,7 @@ pub fn spawn_board(
                     Name::new("Background"),
                     MaterialMesh2dBundle {
                         mesh: Mesh2dHandle(meshes.add(Rectangle::new(size_x, size_y))),
-                        material: materials.add(ev.border_material.clone()),
+                        material: ev.border_material.clone(),
                         transform: Transform::from_translation(
                             ev.position.xy().extend(ev.border_z),
                         ),
@@ -77,18 +59,13 @@ pub fn spawn_board(
             let mesh =
                 Mesh2dHandle(meshes.add(Rectangle::new(ev.board.field_size, ev.board.field_size)));
 
-            let materials: HashMap<Position, Handle<ColorMaterial>> = ev
-                .field_materials
-                .iter()
-                .map(|(key, value)| (*key, materials.add(value.clone())))
-                .collect();
-
             for i in 0..ev.board.cols {
                 for j in 0..ev.board.rows {
                     let position = Position { x: i, y: j };
 
                     let mesh = mesh.clone();
-                    let material = materials
+                    let material = ev
+                        .field_materials
                         .get(&position)
                         .expect("every position should have an associated material")
                         .clone();
@@ -116,8 +93,8 @@ pub fn spawn_board(
 
         let board = {
             let board_highlights = BoardHighlights {
-                mesh: meshes.add(ev.highlight_mesh.clone()),
-                color: materials.add(ev.highlight_material.clone()),
+                mesh: ev.highlight_mesh.clone(),
+                color: ev.highlight_material.clone(),
                 z: ev.highlight_z,
                 entity: None,
             };
@@ -125,6 +102,7 @@ pub fn spawn_board(
             let result = commands
                 .spawn((
                     Name::new("Board"),
+                    ev.id,
                     SpatialBundle {
                         transform: Transform::from_translation(ev.position),
                         ..default()
@@ -143,58 +121,76 @@ pub fn spawn_board(
     }
 }
 
-// fn setup_board(
-//     mut q_board: Query<&mut Board>,
-//     figure_data: Res<FigureData>,
-//     mut event: EventReader<CreateBoardEvent>,
-//     mut commands: Commands,
-//     mut meshes: ResMut<Assets<Mesh>>,
-//     mut materials: ResMut<Assets<ColorMaterial>>,
-// ) {
-//     for CreateBoardEvent(entity) in event.read() {
-//         let mut board = q_board.get_mut(*entity).unwrap();
-//
-//         let mesh_map: HashMap<FigureKind, Mesh2dHandle> = figure_data
-//             .meshes
-//             .iter()
-//             .map(|(kind, mesh)| (*kind, Mesh2dHandle(meshes.add(mesh.clone()))))
-//             .collect();
-//
-//         let material_map: HashMap<Side, Handle<ColorMaterial>> = figure_data
-//             .colors
-//             .iter()
-//             .map(|(side, color)| (*side, materials.add(*color)))
-//             .collect();
-//
-//         for figure in &board.starting_position.clone() {
-//             let mesh = mesh_map
-//                 .get(&figure.kind)
-//                 .expect("there should be a mesh associated with the specified figure kind")
-//                 .clone();
-//
-//             let material = material_map
-//                 .get(&figure.side)
-//                 .expect("there should be a material associated with the specified side")
-//                 .clone();
-//
-//             let figure_entity = commands
-//                 .spawn((
-//                     Name::new("Figure"),
-//                     MaterialMesh2dBundle {
-//                         mesh,
-//                         material,
-//                         transform: Transform::from_translation(
-//                             board
-//                                 .board_to_world(figure.board_position)
-//                                 .extend(board.figure_display_z),
-//                         ),
-//                         ..default()
-//                     },
-//                     *figure,
-//                 ))
-//                 .id();
-//
-//             board.add_figure(figure.board_position, figure_entity);
-//         }
-//     }
-// }
+#[derive(Event, Clone)]
+pub struct SpawnFiguresEvent {
+    pub board_id: SimpleId,
+    pub figures: Vec<Figure>,
+    pub meshes: HashMap<FigureKind, Handle<Mesh>>,
+    pub materials: HashMap<Side, Handle<ColorMaterial>>,
+}
+
+pub fn spawn_figures(
+    mut event: EventReader<SpawnFiguresEvent>,
+    mut commands: Commands,
+    mut q_board: Query<(&SimpleId, &mut Board)>,
+) {
+    for ev in event.read() {
+        let mut board = 'blk: {
+            for (id, b) in &mut q_board {
+                if ev.board_id == *id {
+                    break 'blk b;
+                }
+            }
+
+            panic!("board_id should be a valid id");
+        };
+
+        let parent = commands
+            .spawn((
+                Name::new("Figures"),
+                SpatialBundle {
+                    transform: Transform::from_translation(Vec3::ZERO),
+                    ..default()
+                },
+            ))
+            .id();
+
+        for figure in &ev.figures {
+            let mesh = Mesh2dHandle(
+                ev.meshes
+                    .get(&figure.kind)
+                    .expect("all used figure kinds should have an associated mesh")
+                    .clone(),
+            );
+            let material = ev
+                .materials
+                .get(&figure.side)
+                .expect("all used sides should have an associated material")
+                .clone();
+
+            let figure_entity = commands
+                .spawn((
+                    Name::new(format!(
+                        "{} {}",
+                        figure.side.to_string(),
+                        figure.kind.to_string()
+                    )),
+                    MaterialMesh2dBundle {
+                        mesh,
+                        material,
+                        transform: Transform::from_translation(
+                            board
+                                .board_to_world(figure.position)
+                                .extend(board.figures_z),
+                        ),
+                        ..default()
+                    },
+                    *figure,
+                ))
+                .id();
+
+            board.figures.insert(figure.position, figure_entity);
+            commands.entity(parent).add_child(figure_entity);
+        }
+    }
+}

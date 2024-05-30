@@ -11,6 +11,9 @@ pub struct Position {
     pub y: usize,
 }
 
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SimpleId(pub usize);
+
 #[derive(Component, Debug, Default, Clone)]
 pub struct SelectedFigure {
     pub entity: Option<Entity>,
@@ -26,7 +29,7 @@ pub struct BoardOptions {
     pub field_size: f32,
     pub border_width: f32,
     pub outer_border_width: f32,
-    pub figures_z: f32,
+    pub figure_z: f32,
 }
 
 #[derive(Component, Clone)]
@@ -75,7 +78,7 @@ impl Board {
         let field_size = options.field_size;
         let border_width = options.border_width;
         let outer_border_width = options.outer_border_width;
-        let figures_z = options.figures_z;
+        let figures_z = options.figure_z;
 
         let field_offset = field_size + border_width;
         let width = cols as f32 * field_offset - border_width;
@@ -148,10 +151,7 @@ impl Board {
 
     /// Determines whether the provided `position` is on the board or not.
     pub fn is_on_board(&self, position: Position) -> bool {
-        return 0 <= position.x
-            || position.x < self.cols
-            || 0 <= position.y
-            || position.y < self.rows;
+        return position.x < self.cols || position.y < self.rows;
     }
 
     /// Gets all neighboring figure entities of a certain BoardPosition.

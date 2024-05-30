@@ -34,7 +34,7 @@ pub fn set_possible_moves(
 /// Pre:
 /// - figure is on the board
 fn possible_moves(board: &Board, figure: Figure) -> Vec<Position> {
-    let position = figure.board_position;
+    let position = figure.position;
     let mut result: Vec<Position> = vec![];
 
     result.extend(possible_moves_in_range(
@@ -73,7 +73,7 @@ fn possible_moves_in_range<T>(board: &Board, figure: Figure, range: T, axis: Axi
 where
     T: IntoIterator<Item = usize>,
 {
-    let position = figure.board_position;
+    let position = figure.position;
     let mut result: Vec<Position> = vec![];
 
     for i in range {

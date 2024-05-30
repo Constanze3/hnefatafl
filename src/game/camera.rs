@@ -4,7 +4,7 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_camera)
+        app.add_systems(Startup, spawn_camera)
             .add_systems(PreUpdate, track_mouse_position);
     }
 }
@@ -17,7 +17,7 @@ pub struct MousePositionTracker {
     pub mouse_world_position: Option<Vec2>,
 }
 
-fn setup_camera(mut commands: Commands) {
+fn spawn_camera(mut commands: Commands) {
     commands.spawn((
         Camera2dBundle::default(),
         MainCamera,
