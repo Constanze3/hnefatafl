@@ -24,12 +24,12 @@ pub fn spawn_hnefatafl(
     let id = board_id.get();
 
     let board = {
-        let mut colors = HashMap::<u8, Color>::new();
-        colors.insert(0, Color::rgb(0.7, 0.7, 0.7));
-        colors.insert(1, Color::rgb(0.3, 0.4, 1.0));
-        colors.insert(2, Color::rgb(0.2, 0.2, 0.7));
-        colors.insert(3, Color::rgb(0.4, 0.2, 0.2));
-        colors.insert(4, Color::rgb(0.6, 0.2, 0.2));
+        let mut colors = HashMap::<u8, Handle<ColorMaterial>>::new();
+        colors.insert(0, materials.add(Color::rgb(0.7, 0.7, 0.7)));
+        colors.insert(1, materials.add(Color::rgb(0.3, 0.4, 1.0)));
+        colors.insert(2, materials.add(Color::rgb(0.2, 0.2, 0.7)));
+        colors.insert(3, materials.add(Color::rgb(0.4, 0.2, 0.2)));
+        colors.insert(4, materials.add(Color::rgb(0.6, 0.2, 0.2)));
 
         let structure = "\
                      40033333004\n\
@@ -49,7 +49,7 @@ pub fn spawn_hnefatafl(
         let field_materials: HashMap<Position, Handle<ColorMaterial>> = parsed
             .structure
             .iter()
-            .map(|(key, value)| (*key, materials.add(*colors.get(value).unwrap())))
+            .map(|(key, value)| (*key, colors.get(value).unwrap().clone()))
             .collect();
 
         let field_size = 50.;
