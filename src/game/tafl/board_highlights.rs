@@ -11,13 +11,13 @@ pub struct BoardHighlights {
 
 #[derive(Event)]
 pub struct SpawnHighlightsEvent {
-    board_entity: Entity,
-    positions: Vec<Position>,
+    pub board_entity: Entity,
+    pub positions: Vec<Position>,
 }
 
 #[derive(Event)]
 pub struct DespawnHighlightsEvent {
-    board_entity: Entity,
+    pub board_entity: Entity,
 }
 
 /// Spawns highlights for the specified positions of the board

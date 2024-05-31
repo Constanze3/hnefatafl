@@ -5,6 +5,8 @@ use bevy::{
 
 use crate::game::tafl::*;
 
+use self::user_interaction::SelectedFigure;
+
 #[derive(Event, Clone)]
 pub struct SpawnBoardEvent {
     pub id: SimpleId,
@@ -108,6 +110,7 @@ pub fn spawn_board(
                         ..default()
                     },
                     ev.board.clone(),
+                    SelectedFigure(None),
                     board_highlights,
                 ))
                 .id();

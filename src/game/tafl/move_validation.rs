@@ -1,39 +1,9 @@
-use bevy::ecs::{
-    entity::Entity,
-    event::{Event, EventReader},
-    system::Query,
-};
-
 use crate::game::tafl::*;
-
-/// Event for setting the possible moves of the selected figure for a certain board (the provided entity).
-#[derive(Event)]
-pub struct SetPossibleMovesEvent(pub Entity);
-
-/// Sets the possible moves of a selected figures of boards when a SetPossibleMovesEvent is received.
-pub fn set_possible_moves(
-    mut event: EventReader<SetPossibleMovesEvent>,
-    mut q_board: Query<(&Board, &mut SelectedFigure)>,
-    q_figures: Query<&Figure>,
-) {
-    for ev in event.read() {
-        let board_entity = ev.0;
-        let (board, mut selected_figure) = q_board.get_mut(board_entity).unwrap();
-
-        let Some(selected_figure_entity) = selected_figure.entity else {
-            return;
-        };
-
-        let figure = q_figures.get(selected_figure_entity).unwrap();
-
-        selected_figure.possible_moves = Some(possible_moves(board, *figure));
-    }
-}
 
 /// Returns the possible moves for a figure on a board.
 /// Pre:
 /// - figure is on the board
-fn possible_moves(board: &Board, figure: Figure) -> Vec<Position> {
+pub fn possible_moves(board: &Board, figure: Figure) -> Vec<Position> {
     let position = figure.position;
     let mut result: Vec<Position> = vec![];
 
