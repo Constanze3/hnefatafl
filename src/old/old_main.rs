@@ -46,11 +46,6 @@ fn main() {
         .run();
 }
 
-// EVENTS
-
-#[derive(Event)]
-struct CreateBoardEvent(Entity);
-
 // SYSTEMS
 
 fn select_figure(
