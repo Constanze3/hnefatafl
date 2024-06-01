@@ -5,7 +5,7 @@ use bevy::{
 
 use crate::game::tafl::*;
 
-use self::user_interaction::SelectedFigure;
+use self::player_interaction::SelectedFigure;
 
 #[derive(Event, Clone)]
 pub struct SpawnBoardEvent {
@@ -110,7 +110,7 @@ pub fn spawn_board(
                         ..default()
                     },
                     ev.board.clone(),
-                    SelectedFigure(None),
+                    SelectedFigure::default(),
                     board_highlights,
                 ))
                 .id();
@@ -182,9 +182,7 @@ pub fn spawn_figures(
                         mesh,
                         material,
                         transform: Transform::from_translation(
-                            board
-                                .board_to_world(figure.position)
-                                .extend(board.figures_z),
+                            board.board_to_world(figure.position).extend(board.figure_z),
                         ),
                         ..default()
                     },

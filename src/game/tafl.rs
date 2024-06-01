@@ -1,20 +1,21 @@
 use bevy::prelude::*;
 
-pub use self::board::*;
+use self::board::*;
 use self::board_highlights::*;
 use self::figure::*;
-use self::move_validation::*;
-pub use self::spawn::*;
+use self::moving::*;
+use self::player_interaction::*;
 use self::spawn_data::*;
-use self::user_interaction::*;
+use self::spawning::*;
 
 mod board;
 mod board_highlights;
+mod capturing;
 mod figure;
-mod move_validation;
-mod spawn;
+mod moving;
+mod player_interaction;
 pub mod spawn_data;
-mod user_interaction;
+mod spawning;
 
 pub struct TaflPlugin;
 
@@ -24,14 +25,20 @@ impl Plugin for TaflPlugin {
             .add_event::<SpawnFiguresEvent>()
             .add_event::<SpawnHighlightsEvent>()
             .add_event::<DespawnHighlightsEvent>()
+            .add_event::<MoveFigureEvent>()
             .add_systems(Update, (spawn_board, spawn_figures).chain())
             .add_systems(
                 Update,
                 (
-                    select_figure,
-                    (spawn_highlights, despawn_highlights)
-                        .chain()
-                        .after(select_figure),
+                    (
+                        select_figure,
+                        drag_selected_figure,
+                        release_selected_figure,
+                        move_figure,
+                    )
+                        .chain(),
+                    spawn_highlights.after(select_figure),
+                    despawn_highlights.after(release_selected_figure),
                 ),
             )
             .insert_resource(BoardId::default());

@@ -5,7 +5,7 @@ pub enum Axis2 {
     Y,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -13,12 +13,6 @@ pub struct Position {
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SimpleId(pub usize);
-
-#[derive(Component, Debug, Default, Clone)]
-pub struct SelectedFigure {
-    pub entity: Option<Entity>,
-    pub possible_moves: Option<Vec<Position>>,
-}
 
 pub struct BoardOptions {
     pub rows: usize,
@@ -61,7 +55,7 @@ pub struct Board {
     pub upper_left_field_position: Vec2,
 
     // the z-axis coordinate figures displayed on the board should have
-    pub figures_z: f32,
+    pub figure_z: f32,
 }
 
 impl Board {
@@ -113,11 +107,12 @@ impl Board {
             upper_left_corner_position,
             upper_left_field_position,
 
-            figures_z,
+            figure_z: figures_z,
         }
     }
 
     /// Converts a world position to the position of a field on the board.
+    /// Returns None if the position isn't on the board.
     pub fn world_to_board(&self, position: Vec2) -> Option<Position> {
         let ulc = self.upper_left_corner_position;
 

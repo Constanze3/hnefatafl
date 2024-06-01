@@ -1,5 +1,44 @@
 use crate::game::tafl::*;
 
+#[derive(Event)]
+pub struct MoveFigureEvent {
+    pub board_entity: Entity,
+    pub from: Position,
+    pub to: Position,
+}
+
+/// Moves a figure on a board.
+pub fn move_figure(
+    mut event: EventReader<MoveFigureEvent>,
+    mut q_board: Query<&mut Board>,
+    mut q_figure: Query<(&mut Figure, &mut Transform)>,
+) {
+    for ev in event.read() {
+        let mut board = q_board.get_mut(ev.board_entity).unwrap();
+        let Some(figure_entity) = board.figures.get(&ev.from) else {
+            // no figure to move
+            return;
+        };
+
+        let (mut figure, mut figure_transform) = q_figure.get_mut(*figure_entity).unwrap();
+        let possible_moves = possible_moves(&board, *figure);
+
+        if possible_moves.contains(&ev.to) {
+            // update board
+            if let Some(val) = board.figures.remove(&ev.from) {
+                board.figures.insert(ev.to, val);
+            }
+
+            // update figure
+            figure.position = ev.to;
+            figure_transform.translation =
+                board.board_to_world(figure.position).extend(board.figure_z);
+
+            // TODO call capture checking here
+        }
+    }
+}
+
 /// Returns the possible moves for a figure on a board.
 /// Pre:
 /// - figure is on the board
