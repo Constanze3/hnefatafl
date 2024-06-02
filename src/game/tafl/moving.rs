@@ -7,11 +7,12 @@ pub struct MoveFigureEvent {
     pub to: Position,
 }
 
-/// Moves a figure on a board.
+/// Moves a figures on a board.
 pub fn move_figure(
     mut event: EventReader<MoveFigureEvent>,
     mut q_board: Query<&mut Board>,
     mut q_figure: Query<(&mut Figure, &mut Transform)>,
+    mut capture_check_event: EventWriter<CaptureCheckEvent>,
 ) {
     for ev in event.read() {
         let mut board = q_board.get_mut(ev.board_entity).unwrap();
@@ -34,7 +35,12 @@ pub fn move_figure(
             figure_transform.translation =
                 board.board_to_world(figure.position).extend(board.figure_z);
 
-            // TODO call capture checking here
+            for neighbor in board.get_neighbors(ev.to) {
+                capture_check_event.send(CaptureCheckEvent {
+                    board_entity: ev.board_entity,
+                    figure_entity: neighbor,
+                });
+            }
         }
     }
 }

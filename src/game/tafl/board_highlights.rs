@@ -33,8 +33,8 @@ pub fn spawn_highlights(
             return;
         };
 
-        if highlights.entity != None {
-            return;
+        if let Some(highlights_entity) = highlights.entity {
+            commands.entity(highlights_entity).despawn_recursive();
         }
 
         let parent = commands
@@ -77,11 +77,11 @@ pub fn despawn_highlights(
             return;
         };
 
-        let Some(e) = highlights.entity else {
+        let Some(highlights_entity) = highlights.entity else {
             return;
         };
 
-        commands.entity(e).despawn_recursive();
+        commands.entity(highlights_entity).despawn_recursive();
         highlights.entity = None;
     }
 }
