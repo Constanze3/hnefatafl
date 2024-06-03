@@ -1,5 +1,7 @@
 use crate::game::tafl::*;
 
+use self::win_conditions::KingOnCornerCheckEvent;
+
 #[derive(Event)]
 pub struct MoveFigureEvent {
     pub board_entity: Entity,
@@ -7,21 +9,41 @@ pub struct MoveFigureEvent {
     pub to: Position,
 }
 
+#[derive(Component)]
+pub struct TurnTracker {
+    pub side: Side,
+}
+
+impl TurnTracker {
+    pub fn next_turn(&mut self) {
+        match self.side {
+            Side::Attacker => self.side = Side::Defender,
+            Side::Defender => self.side = Side::Attacker,
+        }
+    }
+}
+
 /// Moves a figures on a board.
 pub fn move_figure(
     mut event: EventReader<MoveFigureEvent>,
-    mut q_board: Query<&mut Board>,
+    mut q_board: Query<(&mut Board, &mut TurnTracker)>,
     mut q_figure: Query<(&mut Figure, &mut Transform)>,
     mut capture_check_event: EventWriter<CaptureCheckEvent>,
+    mut king_on_corner_check_event: EventWriter<KingOnCornerCheckEvent>,
 ) {
     for ev in event.read() {
-        let mut board = q_board.get_mut(ev.board_entity).unwrap();
+        let (mut board, mut turn_tracker) = q_board.get_mut(ev.board_entity).unwrap();
         let Some(figure_entity) = board.figures.get(&ev.from) else {
             // no figure to move
-            return;
+            panic!("no figure on from position");
         };
 
         let (mut figure, mut figure_transform) = q_figure.get_mut(*figure_entity).unwrap();
+
+        if figure.side != turn_tracker.side {
+            panic!("figure's side should be matching the turn");
+        }
+
         let possible_moves = possible_moves(&board, *figure);
 
         if possible_moves.contains(&ev.to) {
@@ -35,12 +57,21 @@ pub fn move_figure(
             figure_transform.translation =
                 board.board_to_world(figure.position).extend(board.figure_z);
 
+            if figure.side == Side::Defender && figure.kind == FigureKind::King {
+                king_on_corner_check_event.send(KingOnCornerCheckEvent {
+                    board_entity: ev.board_entity,
+                });
+            }
+
             for neighbor in board.get_neighbors(ev.to) {
                 capture_check_event.send(CaptureCheckEvent {
                     board_entity: ev.board_entity,
                     figure_entity: neighbor,
                 });
             }
+
+            // update game state
+            turn_tracker.next_turn();
         }
     }
 }

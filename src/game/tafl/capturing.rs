@@ -1,5 +1,7 @@
 use crate::game::tafl::*;
 
+use self::win_conditions::KingSurroundedCheckEvent;
+
 // Note: Surrounding the King is a win_condition.
 
 #[derive(Event)]
@@ -38,16 +40,22 @@ pub fn capture_check(
     q_board: Query<&Board>,
     mut capture_event: EventWriter<CaptureEvent>,
     mut shieldwall_capture_check_event: EventWriter<ShieldwallCaptureCheckEvent>,
+    mut king_surrounded_check_event: EventWriter<KingSurroundedCheckEvent>,
 ) {
     for ev in event.read() {
         let board = q_board.get(ev.board_entity).unwrap();
         let figure = q_figure.get(ev.figure_entity).unwrap();
 
         // the king can't be captured, but may be part of a shieldwall capture
+        // we also send a check for the king surrounded win condition
         if figure.kind == FigureKind::King {
             shieldwall_capture_check_event.send(ShieldwallCaptureCheckEvent {
                 board_entity: ev.board_entity,
                 figure_entity: ev.figure_entity,
+            });
+
+            king_surrounded_check_event.send(KingSurroundedCheckEvent {
+                board_entity: ev.board_entity,
             });
             return;
         }

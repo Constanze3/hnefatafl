@@ -108,6 +108,9 @@ pub fn spawn_board(
                         ..default()
                     },
                     ev.board.clone(),
+                    TurnTracker {
+                        side: Side::Attacker,
+                    },
                     board_highlights,
                 ))
                 .id();

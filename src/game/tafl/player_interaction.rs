@@ -26,7 +26,7 @@ pub fn on_mouse_pressed(
     buttons: Res<ButtonInput<MouseButton>>,
     q_mouse_position: Query<&MousePositionTracker, With<MainCamera>>,
     mut selected_figure: ResMut<SelectedFigure>,
-    q_board: Query<(Entity, &Board, &Transform)>,
+    q_board: Query<(Entity, &Board, &Transform, &TurnTracker)>,
     q_figure: Query<&Figure>,
     mut commands: Commands,
     mut spawn_highlights_event: EventWriter<SpawnHighlightsEvent>,
@@ -38,16 +38,16 @@ pub fn on_mouse_pressed(
         };
 
         // get board closest to mouse
-        let Some((board_entity, board)) = ({
+        let Some((board_entity, board, turn_tracker)) = ({
             let mut result = None;
             let mut result_distance = 0.;
 
-            for (board_entity, board, board_transform) in &q_board {
+            for (board_entity, board, board_transform, turn_tracker) in &q_board {
                 let distance = board_transform.translation.xy().distance(mouse_position);
 
                 if result.is_none() || distance < result_distance {
                     result_distance = distance;
-                    result = Some((board_entity, board));
+                    result = Some((board_entity, board, turn_tracker));
                     continue;
                 }
             }
@@ -66,6 +66,12 @@ pub fn on_mouse_pressed(
         };
         let selected_figure_entity = *selected_figure_entity_reference;
 
+        let figure = q_figure.get(selected_figure_entity).unwrap();
+        if figure.side != turn_tracker.side {
+            // it is the other side's turn so figure can't be selected
+            return;
+        }
+
         commands.entity(selected_figure_entity).insert(Grabbed {
             z: board.figure_z + 1.,
         });
@@ -82,7 +88,6 @@ pub fn on_mouse_pressed(
             was_put_down_once: false,
         };
 
-        let figure = q_figure.get(selected_figure_entity).unwrap();
         spawn_highlights_event.send(SpawnHighlightsEvent {
             board_entity,
             positions: possible_moves(board, *figure),

@@ -9,6 +9,7 @@ use self::player_interaction::*;
 use self::shieldwall_capturing::*;
 use self::spawn_data::*;
 use self::spawning::*;
+use self::win_conditions::*;
 
 mod board;
 mod board_highlights;
@@ -19,6 +20,7 @@ mod player_interaction;
 mod shieldwall_capturing;
 pub mod spawn_data;
 mod spawning;
+mod win_conditions;
 
 pub struct TaflPlugin;
 
@@ -32,6 +34,8 @@ impl Plugin for TaflPlugin {
             .add_event::<CaptureEvent>()
             .add_event::<CaptureCheckEvent>()
             .add_event::<ShieldwallCaptureCheckEvent>()
+            .add_event::<KingOnCornerCheckEvent>()
+            .add_event::<KingSurroundedCheckEvent>()
             .add_systems(Update, (spawn_board, spawn_figures).chain())
             .add_systems(
                 Update,
@@ -44,6 +48,8 @@ impl Plugin for TaflPlugin {
                         capture_check,
                         shieldwall_capture_check,
                         capture,
+                        king_on_corner_check,
+                        king_surrounded_check,
                     )
                         .chain(),
                     spawn_highlights.after(on_mouse_pressed),
