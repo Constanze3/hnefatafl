@@ -1,4 +1,8 @@
-use bevy::utils::HashMap;
+use bevy::{
+    render::render_asset::RenderAssetUsages,
+    sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+    utils::HashMap,
+};
 
 use crate::game::tafl::*;
 
@@ -20,6 +24,7 @@ pub fn spawn_hnefatafl(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut board_id: ResMut<BoardId>,
+    mut commands: Commands,
 ) {
     let id = board_id.get();
 
@@ -68,7 +73,7 @@ pub fn spawn_hnefatafl(
             field_size,
             border_width: 4.,
             outer_border_width: 12.,
-            figure_z: 2.,
+            figure_z: 3.,
         });
 
         spawn_board_event.send(SpawnBoardEvent {
@@ -152,6 +157,21 @@ a s 10 7
             meshes: figure_meshes,
         });
     };
+
+    // selection indicator
+    {
+        let mesh = Mesh2dHandle(meshes.add(Rectangle::new(board.field_size, board.field_size)));
+        commands.spawn((
+            MaterialMesh2dBundle {
+                mesh,
+                material: materials.add(Color::rgb(1., 0., 0.)),
+                transform: Transform::from_xyz(0., 0., 2.),
+                visibility: Visibility::Hidden,
+                ..default()
+            },
+            SelectionIndicator,
+        ));
+    }
 }
 
 struct ParsedBoard {

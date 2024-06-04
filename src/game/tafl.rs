@@ -30,7 +30,9 @@ impl Plugin for TaflPlugin {
             .add_event::<SpawnFiguresEvent>()
             .add_event::<SpawnHighlightsEvent>()
             .add_event::<DespawnHighlightsEvent>()
+            .add_event::<TryMoveFigureEvent>()
             .add_event::<MoveFigureEvent>()
+            .add_event::<ReleaseSelectedFigureEvent>()
             .add_event::<CaptureEvent>()
             .add_event::<CaptureCheckEvent>()
             .add_event::<ShieldwallCaptureCheckEvent>()
@@ -44,7 +46,10 @@ impl Plugin for TaflPlugin {
                         on_mouse_pressed,
                         drag_grabbed,
                         on_mouse_released,
+                        try_move_figure,
+                        slide_and_move_figure,
                         move_figure,
+                        release_selected_figure,
                         capture_check,
                         shieldwall_capture_check,
                         capture,
@@ -57,6 +62,8 @@ impl Plugin for TaflPlugin {
                 ),
             )
             .insert_resource(BoardId::default())
-            .insert_resource(SelectedFigure::default());
+            .insert_resource(SelectionOptions::default())
+            .insert_resource(SelectedFigure::default())
+            .insert_resource(MoveFigureOptions::default());
     }
 }

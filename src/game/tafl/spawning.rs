@@ -34,7 +34,7 @@ pub fn spawn_board(
                 .spawn((
                     Name::new("Background"),
                     MaterialMesh2dBundle {
-                        mesh: Mesh2dHandle(meshes.add(Rectangle::new(size_x, size_y))),
+                        mesh: meshes.add(Rectangle::new(size_x, size_y)).into(),
                         material: ev.border_material.clone(),
                         transform: Transform::from_translation(
                             ev.position.xy().extend(ev.border_z),

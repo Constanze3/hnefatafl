@@ -1,6 +1,11 @@
 use crate::game::camera::*;
 use crate::game::tafl::*;
 
+#[derive(Resource, Default)]
+pub struct SelectionOptions {
+    pub selection_locked: bool,
+}
+
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SelectedFigure {
     Some {
@@ -23,14 +28,20 @@ pub struct Grabbed {
 
 /// Selects the figure at the mouse position.
 pub fn on_mouse_pressed(
+    selection_options: Res<SelectionOptions>,
     buttons: Res<ButtonInput<MouseButton>>,
     q_mouse_position: Query<&MousePositionTracker, With<MainCamera>>,
     mut selected_figure: ResMut<SelectedFigure>,
-    q_board: Query<(Entity, &Board, &Transform, &TurnTracker)>,
+    q_board: Query<(Entity, &Board, &Transform, &TurnTracker), Without<SelectionIndicator>>,
     q_figure: Query<&Figure>,
+    mut q_selection_indicator: Query<(&mut Transform, &mut Visibility), With<SelectionIndicator>>,
     mut commands: Commands,
     mut spawn_highlights_event: EventWriter<SpawnHighlightsEvent>,
 ) {
+    if selection_options.selection_locked {
+        return;
+    }
+
     if buttons.just_pressed(MouseButton::Left) {
         let Some(mouse_position) = q_mouse_position.get_single().unwrap().mouse_world_position
         else {
@@ -88,6 +99,14 @@ pub fn on_mouse_pressed(
             was_put_down_once: false,
         };
 
+        // selection indicator
+        {
+            let (mut transform, mut visibility) = q_selection_indicator.get_single_mut().unwrap();
+            let z = transform.translation.z;
+            transform.translation = board.board_to_world(selected_field).extend(z);
+            *visibility = Visibility::Inherited;
+        }
+
         spawn_highlights_event.send(SpawnHighlightsEvent {
             board_entity,
             positions: possible_moves(board, *figure),
@@ -109,12 +128,6 @@ pub fn drag_grabbed(
     }
 }
 
-// pub fn handle_selection_indicator(
-//     selected_figure: Res<SelectedFigure>,
-//     q_selection_indicator: Query<(Transform, Visibility), With<SelectionIndicator>>,
-// ) {
-// }
-
 /// Lets go of (removes Grabbed from) the figure, if it is done so for the first time the selection remains
 /// allowing for `slide_and_move`, otherwise the selection is set to none as well.
 pub fn on_mouse_released(
@@ -124,8 +137,8 @@ pub fn on_mouse_released(
     q_board: Query<&Board>,
     mut q_figure: Query<(&Figure, &mut Transform, Option<&Grabbed>)>,
     mut commands: Commands,
-    mut despawn_highlights_event: EventWriter<DespawnHighlightsEvent>,
-    mut move_figure_event: EventWriter<MoveFigureEvent>,
+    mut try_move_figure_event: EventWriter<TryMoveFigureEvent>,
+    mut release_selected_figure_event: EventWriter<ReleaseSelectedFigureEvent>,
 ) {
     if buttons.just_released(MouseButton::Left) {
         let SelectedFigure::Some {
@@ -143,11 +156,6 @@ pub fn on_mouse_released(
         // reset the figure's "visual" position
         figure_transform.translation = board.board_to_world(figure.position).extend(board.figure_z);
 
-        let mut release_selected_figure = |selected_figure: &mut ResMut<SelectedFigure>| {
-            **selected_figure = SelectedFigure::None;
-            despawn_highlights_event.send(DespawnHighlightsEvent { board_entity });
-        };
-
         let moved = 'blk: {
             let Some(mouse_position) = q_mouse_position.get_single().unwrap().mouse_world_position
             else {
@@ -164,20 +172,19 @@ pub fn on_mouse_released(
                 break 'blk false;
             }
 
-            release_selected_figure(&mut selected_figure);
-
             if grabbed.is_some() {
-                move_figure_event.send(MoveFigureEvent {
+                try_move_figure_event.send(TryMoveFigureEvent {
                     board_entity,
                     from,
                     to,
+                    slide: false,
                 });
             } else {
-                // TODO call slide_and_move here instead
-                move_figure_event.send(MoveFigureEvent {
+                try_move_figure_event.send(TryMoveFigureEvent {
                     board_entity,
                     from,
                     to,
+                    slide: true,
                 });
             }
 
@@ -187,7 +194,7 @@ pub fn on_mouse_released(
         if !moved {
             match was_put_down_once {
                 true => {
-                    release_selected_figure(&mut selected_figure);
+                    release_selected_figure_event.send(ReleaseSelectedFigureEvent { board_entity });
                 }
                 false => {
                     if let SelectedFigure::Some {
@@ -202,5 +209,31 @@ pub fn on_mouse_released(
         }
 
         commands.entity(figure_entity).remove::<Grabbed>();
+    }
+}
+
+#[derive(Event)]
+pub struct ReleaseSelectedFigureEvent {
+    pub board_entity: Entity,
+}
+
+pub fn release_selected_figure(
+    mut event: EventReader<ReleaseSelectedFigureEvent>,
+    mut selected_figure: ResMut<SelectedFigure>,
+    mut q_selection_indicator: Query<&mut Visibility, With<SelectionIndicator>>,
+    mut despawn_highlights_event: EventWriter<DespawnHighlightsEvent>,
+) {
+    for ev in event.read() {
+        *selected_figure = SelectedFigure::None;
+
+        // selection indicator
+        {
+            let mut visibility = q_selection_indicator.get_single_mut().unwrap();
+            *visibility = Visibility::Hidden;
+        }
+
+        despawn_highlights_event.send(DespawnHighlightsEvent {
+            board_entity: ev.board_entity,
+        });
     }
 }

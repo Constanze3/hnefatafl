@@ -2,11 +2,17 @@ use crate::game::tafl::*;
 
 use self::win_conditions::KingOnCornerCheckEvent;
 
-#[derive(Event)]
-pub struct MoveFigureEvent {
-    pub board_entity: Entity,
-    pub from: Position,
-    pub to: Position,
+#[derive(Resource)]
+pub struct MoveFigureOptions {
+    pub slide_duration: f32,
+}
+
+impl Default for MoveFigureOptions {
+    fn default() -> Self {
+        Self {
+            slide_duration: 0.2,
+        }
+    }
 }
 
 #[derive(Component)]
@@ -23,7 +29,14 @@ impl TurnTracker {
     }
 }
 
-/// Moves a figures on a board.
+#[derive(Event, Clone, Copy)]
+pub struct MoveFigureEvent {
+    board_entity: Entity,
+    from: Position,
+    to: Position,
+}
+
+// Pre: The move is valid.
 pub fn move_figure(
     mut event: EventReader<MoveFigureEvent>,
     mut q_board: Query<(&mut Board, &mut TurnTracker)>,
@@ -33,45 +46,142 @@ pub fn move_figure(
 ) {
     for ev in event.read() {
         let (mut board, mut turn_tracker) = q_board.get_mut(ev.board_entity).unwrap();
+
+        let Some(figure_entity) = board.figures.get(&ev.from) else {
+            panic!("`from` should contain a figure");
+        };
+        let (mut figure, mut figure_transform) = q_figure.get_mut(*figure_entity).unwrap();
+
+        if let Some(val) = board.figures.remove(&figure.position) {
+            board.figures.insert(ev.to, val);
+        }
+        figure.position = ev.to;
+
+        figure_transform.translation = board.board_to_world(figure.position).extend(board.figure_z);
+
+        if figure.side == Side::Defender && figure.kind == FigureKind::King {
+            king_on_corner_check_event.send(KingOnCornerCheckEvent {
+                board_entity: ev.board_entity,
+            });
+        }
+
+        for neighbor in board.get_neighbors(ev.to) {
+            capture_check_event.send(CaptureCheckEvent {
+                board_entity: ev.board_entity,
+                figure_entity: neighbor,
+            });
+        }
+
+        turn_tracker.next_turn();
+    }
+}
+
+#[derive(Component)]
+pub struct FigureToSlideAndMove {
+    event: MoveFigureEvent,
+    interpolation: f32,
+}
+
+impl FigureToSlideAndMove {
+    pub fn new(event: MoveFigureEvent) -> Self {
+        Self {
+            event,
+            interpolation: 0.,
+        }
+    }
+}
+
+pub fn slide_and_move_figure(
+    move_figure_options: Res<MoveFigureOptions>,
+    q_board: Query<&Board>,
+    mut q_figure: Query<(Entity, &mut Transform, &mut FigureToSlideAndMove), With<Figure>>,
+    time: Res<Time>,
+    mut commands: Commands,
+    mut move_figure_event: EventWriter<MoveFigureEvent>,
+    mut selection_options: ResMut<SelectionOptions>,
+) {
+    for (figure_entity, mut figure_transform, mut figure_to_slide_and_move) in &mut q_figure {
+        let FigureToSlideAndMove {
+            event,
+            interpolation,
+        } = figure_to_slide_and_move.as_mut();
+
+        let board = q_board.get(event.board_entity).unwrap();
+
+        let from_world_position = board.board_to_world(event.from);
+        let to_world_position = board.board_to_world(event.to);
+
+        *interpolation += time.delta_seconds() / move_figure_options.slide_duration;
+        *interpolation = f32::min(1., *interpolation);
+
+        if 1.0 <= *interpolation {
+            commands
+                .entity(figure_entity)
+                .remove::<FigureToSlideAndMove>();
+            selection_options.selection_locked = false;
+
+            move_figure_event.send(*event);
+            return;
+        }
+
+        let interpolation_vector = (to_world_position - from_world_position) * *interpolation;
+        let interpolated_position = from_world_position + interpolation_vector;
+
+        let z = figure_transform.translation.z;
+        figure_transform.translation = interpolated_position.extend(z);
+    }
+}
+
+#[derive(Event)]
+pub struct TryMoveFigureEvent {
+    pub board_entity: Entity,
+    pub from: Position,
+    pub to: Position,
+    pub slide: bool,
+}
+
+/// Validates moves and moves figures on a board.
+pub fn try_move_figure(
+    mut event: EventReader<TryMoveFigureEvent>,
+    mut q_board: Query<(&mut Board, &mut TurnTracker)>,
+    mut q_figure: Query<&mut Figure>,
+    mut release_selected_figure_event: EventWriter<ReleaseSelectedFigureEvent>,
+    mut move_figure_event: EventWriter<MoveFigureEvent>,
+    mut commands: Commands,
+    mut selection_options: ResMut<SelectionOptions>,
+) {
+    for ev in event.read() {
+        let (board, turn_tracker) = q_board.get_mut(ev.board_entity).unwrap();
         let Some(figure_entity) = board.figures.get(&ev.from) else {
             // no figure to move
             panic!("no figure on from position");
         };
 
-        let (mut figure, mut figure_transform) = q_figure.get_mut(*figure_entity).unwrap();
+        let figure = q_figure.get_mut(*figure_entity).unwrap();
 
         if figure.side != turn_tracker.side {
             panic!("figure's side should be matching the turn");
         }
 
-        let possible_moves = possible_moves(&board, *figure);
+        let event = MoveFigureEvent {
+            board_entity: ev.board_entity,
+            from: ev.from,
+            to: ev.to,
+        };
 
-        if possible_moves.contains(&ev.to) {
-            // update board
-            if let Some(val) = board.figures.remove(&ev.from) {
-                board.figures.insert(ev.to, val);
+        if possible_moves(&board, *figure).contains(&ev.to) {
+            release_selected_figure_event.send(ReleaseSelectedFigureEvent {
+                board_entity: ev.board_entity,
+            });
+
+            if ev.slide {
+                commands
+                    .entity(*figure_entity)
+                    .insert(FigureToSlideAndMove::new(event));
+                selection_options.selection_locked = true;
+            } else {
+                move_figure_event.send(event);
             }
-
-            // update figure
-            figure.position = ev.to;
-            figure_transform.translation =
-                board.board_to_world(figure.position).extend(board.figure_z);
-
-            if figure.side == Side::Defender && figure.kind == FigureKind::King {
-                king_on_corner_check_event.send(KingOnCornerCheckEvent {
-                    board_entity: ev.board_entity,
-                });
-            }
-
-            for neighbor in board.get_neighbors(ev.to) {
-                capture_check_event.send(CaptureCheckEvent {
-                    board_entity: ev.board_entity,
-                    figure_entity: neighbor,
-                });
-            }
-
-            // update game state
-            turn_tracker.next_turn();
         }
     }
 }
