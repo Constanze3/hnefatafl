@@ -9,6 +9,8 @@ use self::player_interaction::*;
 use self::shieldwall_capturing::*;
 use self::spawn_data::*;
 use self::spawning::*;
+use self::ui::*;
+use self::victory_ui::VictoryUiPlugin;
 use self::win_conditions::*;
 
 mod board;
@@ -20,13 +22,17 @@ mod player_interaction;
 mod shieldwall_capturing;
 pub mod spawn_data;
 mod spawning;
+mod ui;
+mod victory_ui;
 mod win_conditions;
 
 pub struct TaflPlugin;
 
 impl Plugin for TaflPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        app.add_event::<SpawnBoardEvent>()
+        app.add_plugins(UiPlugin)
+            .add_plugins(VictoryUiPlugin)
+            .add_event::<SpawnBoardEvent>()
             .add_event::<SpawnFiguresEvent>()
             .add_event::<SpawnHighlightsEvent>()
             .add_event::<DespawnHighlightsEvent>()
@@ -38,6 +44,7 @@ impl Plugin for TaflPlugin {
             .add_event::<ShieldwallCaptureCheckEvent>()
             .add_event::<KingOnCornerCheckEvent>()
             .add_event::<KingSurroundedCheckEvent>()
+            .add_event::<EndGameEvent>()
             .add_systems(Update, (spawn_board, spawn_figures).chain())
             .add_systems(
                 Update,
@@ -55,6 +62,8 @@ impl Plugin for TaflPlugin {
                         capture,
                         king_on_corner_check,
                         king_surrounded_check,
+                        game_timer_check,
+                        on_game_end,
                     )
                         .chain(),
                     spawn_highlights.after(on_mouse_pressed),
@@ -64,6 +73,7 @@ impl Plugin for TaflPlugin {
             .insert_resource(BoardId::default())
             .insert_resource(SelectionOptions::default())
             .insert_resource(SelectedFigure::default())
-            .insert_resource(MoveFigureOptions::default());
+            .insert_resource(MoveFigureOptions::default())
+            .insert_resource(GameState::default());
     }
 }

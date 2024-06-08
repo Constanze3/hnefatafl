@@ -43,6 +43,7 @@ pub fn move_figure(
     mut q_figure: Query<(&mut Figure, &mut Transform)>,
     mut capture_check_event: EventWriter<CaptureCheckEvent>,
     mut king_on_corner_check_event: EventWriter<KingOnCornerCheckEvent>,
+    mut indicate_turn_event: EventWriter<IndicateTurnEvent>,
 ) {
     for ev in event.read() {
         let (mut board, mut turn_tracker) = q_board.get_mut(ev.board_entity).unwrap();
@@ -73,6 +74,9 @@ pub fn move_figure(
         }
 
         turn_tracker.next_turn();
+        indicate_turn_event.send(IndicateTurnEvent {
+            side: Some(turn_tracker.side),
+        });
     }
 }
 

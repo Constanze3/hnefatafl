@@ -1,5 +1,6 @@
+use std::time::Duration;
+
 use bevy::{
-    render::render_asset::RenderAssetUsages,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
     utils::HashMap,
 };
@@ -25,16 +26,18 @@ pub fn spawn_hnefatafl(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut board_id: ResMut<BoardId>,
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut setup_game_ui_event: EventWriter<SetupGameUiEvent>,
 ) {
     let id = board_id.get();
 
     let board = {
         let mut colors = HashMap::<u8, Handle<ColorMaterial>>::new();
-        colors.insert(0, materials.add(Color::rgb(0.7, 0.7, 0.7)));
-        colors.insert(1, materials.add(Color::rgb(0.3, 0.4, 1.0)));
-        colors.insert(2, materials.add(Color::rgb(0.2, 0.2, 0.7)));
-        colors.insert(3, materials.add(Color::rgb(0.4, 0.2, 0.2)));
-        colors.insert(4, materials.add(Color::rgb(0.6, 0.2, 0.2)));
+        colors.insert(0, materials.add(Color::rgb_u8(130, 162, 157)));
+        colors.insert(1, materials.add(Color::rgb_u8(38, 53, 75)));
+        colors.insert(2, materials.add(Color::rgb_u8(78, 112, 165)));
+        colors.insert(3, materials.add(Color::rgb_u8(157, 79, 79)));
+        colors.insert(4, materials.add(Color::rgb_u8(55, 65, 104)));
 
         let structure = "\
                      40033333004\n\
@@ -135,26 +138,33 @@ a s 10 7
 
         let figures = parse_figures(starting_position, &board).unwrap();
 
-        let mut figure_meshes = HashMap::<FigureKind, Handle<Mesh>>::new();
-        let square_size = 0.65 * board.field_size;
-        figure_meshes.insert(
-            FigureKind::Soldier,
-            meshes.add(Rectangle::new(square_size, square_size)),
+        let mut figure_textures = HashMap::<FigureType, Handle<Image>>::new();
+        figure_textures.insert(
+            FigureType {
+                side: Side::Defender,
+                kind: FigureKind::King,
+            },
+            asset_server.load("figures/defender_king.png"),
         );
-        figure_meshes.insert(
-            FigureKind::King,
-            meshes.add(Circle::new(0.4 * board.field_size)),
+        figure_textures.insert(
+            FigureType {
+                side: Side::Defender,
+                kind: FigureKind::Soldier,
+            },
+            asset_server.load("figures/defender_soldier.png"),
         );
-
-        let mut figure_materials = HashMap::<Side, Handle<ColorMaterial>>::new();
-        figure_materials.insert(Side::Attacker, materials.add(Color::rgb(0., 0., 0.)));
-        figure_materials.insert(Side::Defender, materials.add(Color::rgb(1., 1., 1.)));
+        figure_textures.insert(
+            FigureType {
+                side: Side::Attacker,
+                kind: FigureKind::Soldier,
+            },
+            asset_server.load("figures/attacker_soldier.png"),
+        );
 
         spawn_figures_event.send(SpawnFiguresEvent {
             board_id: id,
             figures,
-            materials: figure_materials,
-            meshes: figure_meshes,
+            textures: figure_textures,
         });
     };
 
@@ -164,7 +174,7 @@ a s 10 7
         commands.spawn((
             MaterialMesh2dBundle {
                 mesh,
-                material: materials.add(Color::rgb(1., 0., 0.)),
+                material: materials.add(Color::rgb_u8(157, 71, 162)),
                 transform: Transform::from_xyz(0., 0., 2.),
                 visibility: Visibility::Hidden,
                 ..default()
@@ -172,6 +182,11 @@ a s 10 7
             SelectionIndicator,
         ));
     }
+
+    setup_game_ui_event.send(SetupGameUiEvent {
+        side_with_initial_turn: Side::Attacker,
+        timer_duration: Duration::from_secs(240),
+    });
 }
 
 struct ParsedBoard {

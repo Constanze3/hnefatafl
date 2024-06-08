@@ -24,6 +24,12 @@ pub enum FigureKind {
     Soldier,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct FigureType {
+    pub side: Side,
+    pub kind: FigureKind,
+}
+
 // TODO make a proc macro for this to experience them
 impl fmt::Display for FigureKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
