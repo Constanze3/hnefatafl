@@ -7,7 +7,7 @@ pub struct VictoryUiPlugin;
 impl Plugin for VictoryUiPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<SpawnVictoryUiEvent>()
-            .add_systems(Update, spawn_victory_ui)
+            .add_systems(Update, (spawn_victory_ui, update_victory_ui_lifetime))
             .insert_resource(VictoryText::default());
     }
 }
@@ -33,7 +33,9 @@ pub struct SpawnVictoryUiEvent {
 }
 
 #[derive(Component)]
-pub struct VictoryUi;
+pub struct VictoryUi {
+    pub lifetime: Timer,
+}
 
 pub fn spawn_victory_ui(
     mut event: EventReader<SpawnVictoryUiEvent>,
@@ -44,7 +46,9 @@ pub fn spawn_victory_ui(
     for ev in event.read() {
         commands
             .spawn((
-                VictoryUi,
+                VictoryUi {
+                    lifetime: Timer::from_seconds(3., TimerMode::Once),
+                },
                 NodeBundle {
                     style: Style {
                         width: Val::Percent(100.),
@@ -83,5 +87,19 @@ pub fn spawn_victory_ui(
                         ));
                     });
             });
+    }
+}
+
+pub fn update_victory_ui_lifetime(
+    mut q_victory_ui: Query<(Entity, &mut VictoryUi)>,
+    time: Res<Time>,
+    mut commands: Commands,
+) {
+    for (victory_ui_entity, mut victory_ui) in &mut q_victory_ui {
+        victory_ui.lifetime.tick(time.delta());
+
+        if victory_ui.lifetime.just_finished() {
+            commands.entity(victory_ui_entity).despawn_recursive();
+        }
     }
 }
