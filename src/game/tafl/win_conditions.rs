@@ -50,21 +50,34 @@ pub fn king_surrounded_check(
         let board = q_board.get(ev.board_entity).unwrap();
 
         // all defender kings are surrounded
+        // being next to a wall, end_position or throne also counts as being surrounded.
         let mut win = true;
         for figure_entity in board.figures.values() {
             let figure = q_figure.get(*figure_entity).unwrap();
-            if figure.side == Side::Defender && figure.kind == FigureKind::King {
-                let neighbor_entities = board.get_neighbors(figure.position);
-                if neighbor_entities.len() < 4 {
-                    win = false;
-                    break;
-                }
 
-                for neighbor_entity in neighbor_entities {
-                    let neighbor = q_figure.get(neighbor_entity).unwrap();
-                    if neighbor.side != Side::Attacker {
-                        win = false;
-                        break;
+            if figure.side == Side::Defender && figure.kind == FigureKind::King {
+                let neighbors = board.get_neighbors2(figure.position);
+
+                for neighbor in neighbors.to_vec() {
+                    if let Neighbor::Empty { position } = neighbor {
+                        if !board.end_positions.contains(&position)
+                            && board.throne_position != position
+                        {
+                            win = false;
+                            break;
+                        }
+                    }
+
+                    if let Neighbor::Some {
+                        entity: neighbor_entity,
+                        ..
+                    } = neighbor
+                    {
+                        let neighbor_figure = q_figure.get(neighbor_entity).unwrap();
+                        if neighbor_figure.side != Side::Attacker {
+                            win = false;
+                            break;
+                        }
                     }
                 }
             }

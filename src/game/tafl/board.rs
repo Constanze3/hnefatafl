@@ -165,7 +165,7 @@ impl Board {
         }
 
         // right
-        if position.x + 1 < self.rows {
+        if position.x + 1 < self.cols {
             if let Some(figure_entity) = self.figures.get(&Position {
                 x: position.x + 1,
                 y: position.y,
@@ -185,7 +185,7 @@ impl Board {
         }
 
         // top
-        if position.y + 1 < self.cols {
+        if position.y + 1 < self.rows {
             if let Some(figure_entity) = self.figures.get(&Position {
                 x: position.x,
                 y: position.y + 1,
@@ -195,5 +195,93 @@ impl Board {
         }
 
         result
+    }
+
+    pub fn get_neighbors2(&self, position: Position) -> Neighbors {
+        let left = if 1 <= position.x {
+            let position = Position {
+                x: position.x - 1,
+                y: position.y,
+            };
+
+            Neighbor::from_pos_and_option(position, self.figures.get(&position).copied())
+        } else {
+            Neighbor::Wall
+        };
+
+        let right = if position.x < self.cols - 1 {
+            let position = Position {
+                x: position.x + 1,
+                y: position.y,
+            };
+
+            Neighbor::from_pos_and_option(position, self.figures.get(&position).copied())
+        } else {
+            Neighbor::Wall
+        };
+
+        let bottom = if 1 <= position.y {
+            let position = Position {
+                x: position.x,
+                y: position.y - 1,
+            };
+
+            Neighbor::from_pos_and_option(position, self.figures.get(&position).copied())
+        } else {
+            Neighbor::Wall
+        };
+
+        let top = if position.y < self.rows - 1 {
+            let position = Position {
+                x: position.x,
+                y: position.y + 1,
+            };
+
+            Neighbor::from_pos_and_option(position, self.figures.get(&position).copied())
+        } else {
+            Neighbor::Wall
+        };
+
+        Neighbors {
+            left,
+            right,
+            bottom,
+            top,
+        }
+    }
+}
+
+pub struct Neighbors {
+    pub left: Neighbor,
+    pub right: Neighbor,
+    pub bottom: Neighbor,
+    pub top: Neighbor,
+}
+
+impl Neighbors {
+    pub fn to_vec(self) -> Vec<Neighbor> {
+        let mut vec = vec![];
+        vec.push(self.left);
+        vec.push(self.right);
+        vec.push(self.bottom);
+        vec.push(self.top);
+
+        vec
+    }
+}
+
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum Neighbor {
+    Some { position: Position, entity: Entity },
+    Empty { position: Position },
+    Wall,
+}
+
+impl Neighbor {
+    fn from_pos_and_option(position: Position, option: Option<Entity>) -> Self {
+        match option {
+            Some(entity) => Neighbor::Some { position, entity },
+            None => Neighbor::Empty { position },
+        }
     }
 }
