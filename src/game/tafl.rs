@@ -7,6 +7,7 @@ use self::figure::*;
 use self::moving::*;
 use self::player_interaction::*;
 use self::shieldwall_capturing::*;
+use self::sounds::SoundsPlugin;
 use self::spawn_data::*;
 use self::spawning::*;
 use self::ui::*;
@@ -20,6 +21,7 @@ mod figure;
 mod moving;
 mod player_interaction;
 mod shieldwall_capturing;
+mod sounds;
 pub mod spawn_data;
 mod spawning;
 mod ui;
@@ -32,6 +34,7 @@ impl Plugin for TaflPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_plugins(UiPlugin)
             .add_plugins(VictoryUiPlugin)
+            .add_plugins(SoundsPlugin)
             .add_event::<SpawnBoardEvent>()
             .add_event::<SpawnFiguresEvent>()
             .add_event::<SpawnHighlightsEvent>()
@@ -39,9 +42,12 @@ impl Plugin for TaflPlugin {
             .add_event::<TryMoveFigureEvent>()
             .add_event::<MoveFigureEvent>()
             .add_event::<ReleaseSelectedFigureEvent>()
-            .add_event::<CaptureEvent>()
+            .add_event::<CaptureChecksEvent>()
             .add_event::<CaptureCheckEvent>()
             .add_event::<ShieldwallCaptureCheckEvent>()
+            .add_event::<CaptureEvent>()
+            .add_event::<OnCaptureCheckEndEvent>()
+            .add_event::<EndMoveEvent>()
             .add_event::<KingOnCornerCheckEvent>()
             .add_event::<KingSurroundedCheckEvent>()
             .add_event::<EndGameEvent>()
@@ -57,9 +63,12 @@ impl Plugin for TaflPlugin {
                         slide_and_move_figure,
                         move_figure,
                         release_selected_figure,
+                        capture_checks,
                         capture_check,
                         shieldwall_capture_check,
+                        collect_on_capture_check_end,
                         capture,
+                        end_move,
                         king_on_corner_check,
                         king_surrounded_check,
                         game_timer_check,

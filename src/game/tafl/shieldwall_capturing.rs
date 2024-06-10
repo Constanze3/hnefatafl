@@ -15,6 +15,7 @@ pub fn shieldwall_capture_check(
     q_board: Query<&Board>,
     q_figure: Query<&Figure>,
     mut capture_event: EventWriter<CaptureEvent>,
+    mut on_capture_check_end_event: EventWriter<OnCaptureCheckEndEvent>,
 ) {
     for ev in event.read() {
         let board = q_board.get(ev.board_entity).unwrap();
@@ -22,8 +23,8 @@ pub fn shieldwall_capture_check(
 
         let to_capture = determine_shieldwall_capture(initial_entity, &board, &q_figure);
 
-        for figure_entity_to_capture in to_capture {
-            let figure_to_capture = q_figure.get(figure_entity_to_capture).unwrap();
+        for figure_entity_to_capture in &to_capture {
+            let figure_to_capture = q_figure.get(*figure_entity_to_capture).unwrap();
 
             // King can't be captured with a shieldwall capture
             if figure_to_capture.kind == FigureKind::King {
@@ -32,9 +33,14 @@ pub fn shieldwall_capture_check(
 
             capture_event.send(CaptureEvent {
                 board_entity: ev.board_entity,
-                figure_entity: figure_entity_to_capture,
+                figure_entity: *figure_entity_to_capture,
             });
         }
+
+        on_capture_check_end_event.send(OnCaptureCheckEndEvent {
+            board_entity: ev.board_entity,
+            capture_happened: !to_capture.is_empty(),
+        });
     }
 }
 

@@ -1,6 +1,6 @@
-use std::time::Duration;
-
 use crate::game::tafl::*;
+use crate::game::GameState;
+use bevy::utils::Duration;
 
 pub struct UiPlugin;
 
@@ -9,17 +9,23 @@ impl Plugin for UiPlugin {
         app.add_event::<SetupGameUiEvent>()
             .add_event::<IndicateTurnEvent>()
             .add_event::<OnGameTimerFinishedEvent>()
-            .add_systems(Startup, spawn_turn_indicators)
+            .add_systems(OnEnter(GameState::InGame), spawn_game_ui)
             .add_systems(
                 Update,
                 (
-                    setup_game_ui,
-                    indicate_turn,
-                    (rotate_loading_circle, update_game_timer).after(indicate_turn),
+                    (setup_game_ui, indicate_turn).run_if(in_state(GameState::InGame)),
+                    (rotate_loading_circle, update_game_timer)
+                        .run_if(in_state(GameState::InGame).and_then(game_ui_is_visible))
+                        .after(indicate_turn),
                 ),
             )
             .insert_resource(TurnIndicators::default());
     }
+}
+
+fn game_ui_is_visible(q_game_ui: Query<&Visibility, With<GameUi>>) -> bool {
+    let visibility = q_game_ui.single();
+    return visibility == Visibility::Visible;
 }
 
 #[derive(Component)]
@@ -79,10 +85,12 @@ pub struct SetupGameUiEvent {
     pub timer_duration: Duration,
 }
 
+// Sets up the game ui and turns it visible
 pub fn setup_game_ui(
     mut event: EventReader<SetupGameUiEvent>,
     mut q_game_timer: Query<(&mut GameTimer, &mut Text)>,
-    mut q_loading_circle: Query<(&LoadingCircle, &mut Visibility)>,
+    mut q_loading_circle: Query<(&LoadingCircle, &mut Visibility), Without<GameUi>>,
+    mut q_game_ui: Query<&mut Visibility, With<GameUi>>,
 ) {
     for ev in event.read() {
         for (mut game_timer, mut text) in &mut q_game_timer {
@@ -90,13 +98,16 @@ pub fn setup_game_ui(
             set_timer_text(&game_timer.timer, &mut text);
         }
 
-        for (loading_circle, mut visibility) in &mut q_loading_circle {
+        for (loading_circle, mut loading_circle_visibility) in &mut q_loading_circle {
             if loading_circle.side == ev.side_with_initial_turn {
-                *visibility = Visibility::Inherited;
+                *loading_circle_visibility = Visibility::Inherited;
             } else {
-                *visibility = Visibility::Hidden;
+                *loading_circle_visibility = Visibility::Hidden;
             }
         }
+
+        let mut game_ui_visibility = q_game_ui.single_mut();
+        *game_ui_visibility = Visibility::Visible;
     }
 }
 
@@ -175,21 +186,28 @@ impl Default for TurnIndicators {
     }
 }
 
-pub fn spawn_turn_indicators(
+#[derive(Component)]
+pub struct GameUi;
+
+pub fn spawn_game_ui(
     turn_indicators: Res<TurnIndicators>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
     commands
-        .spawn(NodeBundle {
-            style: Style {
-                width: Val::Percent(100.),
-                height: Val::Percent(100.),
-                justify_content: JustifyContent::SpaceBetween,
+        .spawn((
+            GameUi,
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    justify_content: JustifyContent::SpaceBetween,
+                    ..default()
+                },
+                visibility: Visibility::Hidden,
                 ..default()
             },
-            ..default()
-        })
+        ))
         .with_children(|parent| {
             for (i, turn_indicator) in vec![&turn_indicators.left, &turn_indicators.right]
                 .into_iter()

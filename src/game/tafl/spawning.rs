@@ -112,6 +112,7 @@ pub fn spawn_board(
                         side: Side::Attacker,
                     },
                     board_highlights,
+                    OnCaptureCheckEndTracker::default(),
                 ))
                 .id();
 

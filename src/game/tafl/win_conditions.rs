@@ -98,11 +98,11 @@ pub fn game_timer_check(
     for ev in event.read() {
         if ev.side == Side::Attacker {
             end_game_event.send(EndGameEvent {
-                winner: Side::Attacker,
+                winner: Side::Defender,
             });
         } else {
             end_game_event.send(EndGameEvent {
-                winner: Side::Defender,
+                winner: Side::Attacker,
             });
         }
     }
@@ -119,10 +119,6 @@ pub fn on_game_end(
     mut indicate_turn_event: EventWriter<IndicateTurnEvent>,
     mut spawn_victory_ui_event: EventWriter<SpawnVictoryUiEvent>,
 ) {
-    if *game_state == GameState::End {
-        return;
-    }
-
     for ev in event.read() {
         indicate_turn_event.send(IndicateTurnEvent { side: None });
         spawn_victory_ui_event.send(SpawnVictoryUiEvent { winner: ev.winner });

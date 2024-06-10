@@ -47,7 +47,7 @@ pub fn spawn_victory_ui(
         commands
             .spawn((
                 VictoryUi {
-                    lifetime: Timer::from_seconds(3., TimerMode::Once),
+                    lifetime: Timer::from_seconds(4., TimerMode::Once),
                 },
                 NodeBundle {
                     style: Style {

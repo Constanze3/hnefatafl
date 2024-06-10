@@ -39,14 +39,14 @@ pub struct MoveFigureEvent {
 // Pre: The move is valid.
 pub fn move_figure(
     mut event: EventReader<MoveFigureEvent>,
-    mut q_board: Query<(&mut Board, &mut TurnTracker)>,
+    mut q_board: Query<&mut Board>,
     mut q_figure: Query<(&mut Figure, &mut Transform)>,
-    mut capture_check_event: EventWriter<CaptureCheckEvent>,
     mut king_on_corner_check_event: EventWriter<KingOnCornerCheckEvent>,
-    mut indicate_turn_event: EventWriter<IndicateTurnEvent>,
+    mut end_move_event: EventWriter<EndMoveEvent>,
+    mut capture_checks_event: EventWriter<CaptureChecksEvent>,
 ) {
     for ev in event.read() {
-        let (mut board, mut turn_tracker) = q_board.get_mut(ev.board_entity).unwrap();
+        let mut board = q_board.get_mut(ev.board_entity).unwrap();
 
         let Some(figure_entity) = board.figures.get(&ev.from) else {
             panic!("`from` should contain a figure");
@@ -66,13 +66,35 @@ pub fn move_figure(
             });
         }
 
-        for neighbor in board.get_neighbors(ev.to) {
-            capture_check_event.send(CaptureCheckEvent {
+        let neighbors = board.get_neighbors(ev.to);
+
+        if neighbors.is_empty() {
+            end_move_event.send(EndMoveEvent {
                 board_entity: ev.board_entity,
-                figure_entity: neighbor,
+                capture_happened: false,
             });
         }
 
+        capture_checks_event.send(CaptureChecksEvent {
+            board_entity: ev.board_entity,
+            figure_entities: neighbors,
+        });
+    }
+}
+
+#[derive(Event)]
+pub struct EndMoveEvent {
+    pub board_entity: Entity,
+    pub capture_happened: bool,
+}
+
+pub fn end_move(
+    mut event: EventReader<EndMoveEvent>,
+    mut q_board: Query<&mut TurnTracker, With<Board>>,
+    mut indicate_turn_event: EventWriter<IndicateTurnEvent>,
+) {
+    for ev in event.read() {
+        let mut turn_tracker = q_board.get_mut(ev.board_entity).unwrap();
         turn_tracker.next_turn();
         indicate_turn_event.send(IndicateTurnEvent {
             side: Some(turn_tracker.side),
