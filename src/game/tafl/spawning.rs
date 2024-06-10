@@ -112,6 +112,7 @@ pub fn spawn_board(
                         side: Side::Attacker,
                     },
                     board_highlights,
+                    OnCaptureCheckEndTracker::default(),
                 ))
                 .id();
 
@@ -128,8 +129,7 @@ pub fn spawn_board(
 pub struct SpawnFiguresEvent {
     pub board_id: SimpleId,
     pub figures: Vec<Figure>,
-    pub meshes: HashMap<FigureKind, Handle<Mesh>>,
-    pub materials: HashMap<Side, Handle<ColorMaterial>>,
+    pub textures: HashMap<FigureType, Handle<Image>>,
 }
 
 pub fn spawn_figures(
@@ -159,16 +159,13 @@ pub fn spawn_figures(
             .id();
 
         for figure in &ev.figures {
-            let mesh = Mesh2dHandle(
-                ev.meshes
-                    .get(&figure.kind)
-                    .expect("all used figure kinds should have an associated mesh")
-                    .clone(),
-            );
-            let material = ev
-                .materials
-                .get(&figure.side)
-                .expect("all used sides should have an associated material")
+            let texture = ev
+                .textures
+                .get(&FigureType {
+                    side: figure.side,
+                    kind: figure.kind,
+                })
+                .expect("all used figure types should have a texture")
                 .clone();
 
             let figure_entity = commands
@@ -178,9 +175,8 @@ pub fn spawn_figures(
                         figure.side.to_string(),
                         figure.kind.to_string()
                     )),
-                    MaterialMesh2dBundle {
-                        mesh,
-                        material,
+                    SpriteBundle {
+                        texture,
                         transform: Transform::from_translation(
                             board.board_to_world(figure.position).extend(board.figure_z),
                         ),
