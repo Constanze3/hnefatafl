@@ -18,6 +18,9 @@ pub struct SpawnBoardEvent {
     pub highlight_z: f32,
 }
 
+#[derive(Component)]
+pub struct MainBoard;
+
 pub fn spawn_board(
     mut event: EventReader<SpawnBoardEvent>,
     mut commands: Commands,
@@ -101,6 +104,7 @@ pub fn spawn_board(
 
             let result = commands
                 .spawn((
+                    MainBoard,
                     Name::new("Board"),
                     ev.id,
                     SpatialBundle {
@@ -125,12 +129,20 @@ pub fn spawn_board(
     }
 }
 
+pub fn despawn_board(q_board: Query<Entity, With<MainBoard>>, mut commands: Commands) {
+    let board_entity = q_board.single();
+    commands.entity(board_entity).despawn_recursive();
+}
+
 #[derive(Event, Clone)]
 pub struct SpawnFiguresEvent {
     pub board_id: SimpleId,
     pub figures: Vec<Figure>,
     pub textures: HashMap<FigureType, Handle<Image>>,
 }
+
+#[derive(Component)]
+pub struct MainFigures;
 
 pub fn spawn_figures(
     mut event: EventReader<SpawnFiguresEvent>,
@@ -150,6 +162,7 @@ pub fn spawn_figures(
 
         let parent = commands
             .spawn((
+                MainFigures,
                 Name::new("Figures"),
                 SpatialBundle {
                     transform: Transform::from_translation(Vec3::ZERO),
@@ -190,4 +203,9 @@ pub fn spawn_figures(
             commands.entity(parent).add_child(figure_entity);
         }
     }
+}
+
+pub fn despawn_figures(q_figures: Query<Entity, With<MainFigures>>, mut commands: Commands) {
+    let figures_entity = q_figures.single();
+    commands.entity(figures_entity).despawn_recursive();
 }

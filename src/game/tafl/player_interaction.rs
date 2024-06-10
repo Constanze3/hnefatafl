@@ -21,6 +21,14 @@ pub enum SelectedFigure {
 #[derive(Component)]
 pub struct SelectionIndicator;
 
+pub fn despawn_selection_indicator(
+    q_selection_indicator: Query<Entity, With<SelectionIndicator>>,
+    mut commands: Commands,
+) {
+    let selection_indicator_entity = q_selection_indicator.single();
+    commands.entity(selection_indicator_entity).despawn();
+}
+
 #[derive(Component)]
 pub struct Grabbed {
     pub z: f32,

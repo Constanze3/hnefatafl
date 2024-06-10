@@ -6,22 +6,40 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
+        app.configure_sets(
+            Update,
+            (
+                UiSet
+                    .run_if(in_state(GameState::InGame))
+                    .run_if(in_state(TaflState::Playing)),
+                UiDynamicSet
+                    .run_if(in_state(GameState::InGame).and_then(game_ui_is_visible))
+                    .run_if(in_state(TaflState::Playing))
+                    .after(indicate_turn),
+            ),
+        );
+
         app.add_event::<SetupGameUiEvent>()
             .add_event::<IndicateTurnEvent>()
             .add_event::<OnGameTimerFinishedEvent>()
             .add_systems(OnEnter(GameState::InGame), spawn_game_ui)
+            .add_systems(OnExit(GameState::InGame), despawn_game_ui)
             .add_systems(
                 Update,
                 (
-                    (setup_game_ui, indicate_turn).run_if(in_state(GameState::InGame)),
-                    (rotate_loading_circle, update_game_timer)
-                        .run_if(in_state(GameState::InGame).and_then(game_ui_is_visible))
-                        .after(indicate_turn),
+                    (setup_game_ui, indicate_turn).in_set(UiSet),
+                    (rotate_loading_circle, update_game_timer).in_set(UiDynamicSet),
                 ),
             )
             .insert_resource(TurnIndicators::default());
     }
 }
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+struct UiSet;
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+struct UiDynamicSet;
 
 fn game_ui_is_visible(q_game_ui: Query<&Visibility, With<GameUi>>) -> bool {
     let visibility = q_game_ui.single();
@@ -321,6 +339,11 @@ pub fn spawn_game_ui(
                     });
             }
         });
+}
+
+pub fn despawn_game_ui(q_game_ui: Query<Entity, With<GameUi>>, mut commands: Commands) {
+    let game_ui_entity = q_game_ui.single();
+    commands.entity(game_ui_entity).despawn_recursive();
 }
 
 pub fn rotate_loading_circle(

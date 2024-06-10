@@ -1,19 +1,23 @@
 use bevy::utils::HashMap;
 
-use crate::game::tafl::*;
+use crate::game::{tafl::*, GameState};
 
 pub struct VictoryUiPlugin;
 
 impl Plugin for VictoryUiPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<SpawnVictoryUiEvent>()
-            .add_systems(Update, (spawn_victory_ui, update_victory_ui_lifetime))
+            .add_systems(
+                Update,
+                (spawn_victory_ui, update_victory_ui_lifetime).run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(OnExit(GameState::InGame), despawn_victory_ui)
             .insert_resource(VictoryText::default());
     }
 }
 
 #[derive(Resource)]
-pub struct VictoryText {
+struct VictoryText {
     pub side_text_map: HashMap<Side, String>,
 }
 
@@ -27,17 +31,17 @@ impl Default for VictoryText {
     }
 }
 
+#[derive(Component)]
+struct VictoryUi {
+    pub lifetime: Timer,
+}
+
 #[derive(Event)]
 pub struct SpawnVictoryUiEvent {
     pub winner: Side,
 }
 
-#[derive(Component)]
-pub struct VictoryUi {
-    pub lifetime: Timer,
-}
-
-pub fn spawn_victory_ui(
+fn spawn_victory_ui(
     mut event: EventReader<SpawnVictoryUiEvent>,
     victory_text: Res<VictoryText>,
     mut commands: Commands,
@@ -90,7 +94,13 @@ pub fn spawn_victory_ui(
     }
 }
 
-pub fn update_victory_ui_lifetime(
+fn despawn_victory_ui(q_victory_ui: Query<Entity, With<VictoryUi>>, mut commands: Commands) {
+    for victory_ui_entity in &q_victory_ui {
+        commands.entity(victory_ui_entity).despawn_recursive();
+    }
+}
+
+fn update_victory_ui_lifetime(
     mut q_victory_ui: Query<(Entity, &mut VictoryUi)>,
     time: Res<Time>,
     mut commands: Commands,

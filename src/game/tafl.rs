@@ -13,6 +13,7 @@ use self::spawning::*;
 use self::ui::*;
 use self::victory_ui::VictoryUiPlugin;
 use self::win_conditions::*;
+use crate::game::GameState;
 
 mod board;
 mod board_highlights;
@@ -77,12 +78,43 @@ impl Plugin for TaflPlugin {
                         .chain(),
                     spawn_highlights.after(on_mouse_pressed),
                     despawn_highlights.after(on_mouse_released),
+                )
+                    .run_if(in_state(GameState::InGame))
+                    .run_if(in_state(TaflState::Playing)),
+            )
+            .add_systems(OnEnter(GameState::InGame), spawn_hnefatafl)
+            .add_systems(
+                OnExit(GameState::InGame),
+                (
+                    despawn_board,
+                    despawn_figures,
+                    despawn_selection_indicator,
+                    clear_resources,
                 ),
             )
             .insert_resource(BoardId::default())
             .insert_resource(SelectionOptions::default())
             .insert_resource(SelectedFigure::default())
             .insert_resource(MoveFigureOptions::default())
-            .insert_resource(GameState::default());
+            .init_state::<TaflState>();
     }
+}
+
+fn clear_resources(
+    mut board_id: ResMut<BoardId>,
+    mut selection_options: ResMut<SelectionOptions>,
+    mut selected_figure: ResMut<SelectedFigure>,
+    mut next_tafl_state: ResMut<NextState<TaflState>>,
+) {
+    *board_id = BoardId::default();
+    *selection_options = SelectionOptions::default();
+    *selected_figure = SelectedFigure::default();
+    next_tafl_state.set(TaflState::Playing);
+}
+
+#[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
+enum TaflState {
+    #[default]
+    Playing,
+    Ended,
 }

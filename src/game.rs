@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::window::close_on_esc;
 
 use self::camera::*;
 use self::main_menu::*;
@@ -15,7 +16,13 @@ impl Plugin for GamePlugin {
         app.add_plugins(CameraPlugin)
             .add_plugins(MainMenuPlugin)
             .add_plugins(TaflPlugin)
-            .add_systems(OnEnter(GameState::InGame), spawn_data::spawn_hnefatafl)
+            .add_systems(
+                Update,
+                (
+                    close_on_esc.run_if(in_state(GameState::MainMenu)),
+                    main_menu_on_esc.run_if(not(in_state(GameState::MainMenu))),
+                ),
+            )
             .init_state::<GameState>();
     }
 }
@@ -25,4 +32,13 @@ enum GameState {
     #[default]
     MainMenu,
     InGame,
+}
+
+fn main_menu_on_esc(
+    input: Res<ButtonInput<KeyCode>>,
+    mut next_game_state: ResMut<NextState<GameState>>,
+) {
+    if input.just_pressed(KeyCode::Escape) {
+        next_game_state.set(GameState::MainMenu);
+    }
 }
