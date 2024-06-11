@@ -9,12 +9,9 @@ impl Plugin for UiPlugin {
         app.configure_sets(
             Update,
             (
-                UiSet
-                    .run_if(in_state(GameState::InGame))
-                    .run_if(in_state(TaflState::Playing)),
+                UiSet.run_if(in_state(GameState::InGame)),
                 UiDynamicSet
                     .run_if(in_state(GameState::InGame).and_then(game_ui_is_visible))
-                    .run_if(in_state(TaflState::Playing))
                     .after(indicate_turn),
             ),
         );
@@ -28,7 +25,11 @@ impl Plugin for UiPlugin {
                 Update,
                 (
                     (setup_game_ui, indicate_turn).in_set(UiSet),
-                    (rotate_loading_circle, update_game_timer).in_set(UiDynamicSet),
+                    (
+                        rotate_loading_circle,
+                        update_game_timer.run_if(in_state(TaflState::Playing)),
+                    )
+                        .in_set(UiDynamicSet),
                 ),
             )
             .insert_resource(TurnIndicators::default());

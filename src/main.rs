@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use bevy::{prelude::*, window::PrimaryWindow, DefaultPlugins};
 // use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use game::GamePlugin;
