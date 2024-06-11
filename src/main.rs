@@ -1,6 +1,5 @@
 use bevy::{prelude::*, window::PrimaryWindow, DefaultPlugins};
-#[allow(unused)]
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+// use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use game::GamePlugin;
 
 mod game;

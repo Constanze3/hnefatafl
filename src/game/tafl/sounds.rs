@@ -9,9 +9,28 @@ impl Plugin for SoundsPlugin {
             .add_systems(OnExit(GameState::InGame), despawn_sound_manager)
             .add_systems(
                 Update,
-                (move_and_capture_sound, game_end_sound).run_if(in_state(GameState::InGame)),
+                (
+                    move_and_capture_sound,
+                    game_end_sound,
+                    cleanup_finished_audio,
+                )
+                    .run_if(in_state(GameState::InGame)),
             )
             .insert_resource(Sounds::default());
+    }
+}
+
+#[derive(Component)]
+struct PlaybackDespawnMarker;
+
+fn cleanup_finished_audio(
+    q_audio: Query<(Entity, &AudioSink), With<PlaybackDespawnMarker>>,
+    mut commands: Commands,
+) {
+    for (entity, sink) in &q_audio {
+        if sink.empty() {
+            commands.entity(entity).despawn_recursive();
+        }
     }
 }
 
@@ -59,23 +78,29 @@ fn move_and_capture_sound(
     for ev in event.read() {
         let sound_entity = if !ev.capture_happened {
             commands
-                .spawn(AudioBundle {
-                    source: asset_server.load(sounds.move_sound.clone()),
-                    settings: PlaybackSettings {
-                        mode: PlaybackMode::Despawn,
-                        ..default()
+                .spawn((
+                    PlaybackDespawnMarker,
+                    AudioBundle {
+                        source: asset_server.load(sounds.move_sound.clone()),
+                        settings: PlaybackSettings {
+                            mode: PlaybackMode::Once,
+                            ..default()
+                        },
                     },
-                })
+                ))
                 .id()
         } else {
             commands
-                .spawn(AudioBundle {
-                    source: asset_server.load(sounds.capture_sound.clone()),
-                    settings: PlaybackSettings {
-                        mode: PlaybackMode::Despawn,
-                        ..default()
+                .spawn((
+                    PlaybackDespawnMarker,
+                    AudioBundle {
+                        source: asset_server.load(sounds.capture_sound.clone()),
+                        settings: PlaybackSettings {
+                            mode: PlaybackMode::Once,
+                            ..default()
+                        },
                     },
-                })
+                ))
                 .id()
         };
 
@@ -94,13 +119,16 @@ fn game_end_sound(
 
     for _ in event.read() {
         let sound_entity = commands
-            .spawn(AudioBundle {
-                source: asset_server.load(sounds.game_end_sound.clone()),
-                settings: PlaybackSettings {
-                    mode: PlaybackMode::Despawn,
-                    ..default()
+            .spawn((
+                PlaybackDespawnMarker,
+                AudioBundle {
+                    source: asset_server.load(sounds.game_end_sound.clone()),
+                    settings: PlaybackSettings {
+                        mode: PlaybackMode::Once,
+                        ..default()
+                    },
                 },
-            })
+            ))
             .id();
 
         commands.entity(sound_manager).add_child(sound_entity);
