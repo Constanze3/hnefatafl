@@ -75,12 +75,12 @@ impl Plugin for TaflPlugin {
                         game_timer_check,
                         on_game_end,
                     )
-                        .chain(),
+                        .chain()
+                        .run_if(in_state(TaflState::Playing)),
                     spawn_highlights.after(on_mouse_pressed),
                     despawn_highlights.after(on_mouse_released),
                 )
-                    .run_if(in_state(GameState::InGame))
-                    .run_if(in_state(TaflState::Playing)),
+                    .run_if(in_state(GameState::InGame)),
             )
             .add_systems(OnEnter(GameState::InGame), spawn_hnefatafl)
             .add_systems(
