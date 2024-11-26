@@ -185,7 +185,7 @@ a s 10 7
 
     setup_game_ui_event.send(SetupGameUiEvent {
         side_with_initial_turn: Side::Attacker,
-        timer_duration: Duration::from_secs(240),
+        timer_duration: Duration::from_secs(600),
     });
 }
 

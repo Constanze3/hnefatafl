@@ -1,47 +1,34 @@
+use crate::game::tafl::*;
 use std::collections::VecDeque;
 
-use crate::game::tafl::*;
-
-#[derive(Event)]
-pub struct ShieldwallCaptureCheckEvent {
-    pub board_entity: Entity,
-    pub figure_entity: Entity,
-}
-
-/// Checks for "Shieldwall Captures". A shieldwall capture is a type of capture where (possibly
-/// multiple) surrounded units at the edge of the board are captured.
+/// Performs shieldwall capture checks from `initial_entity`'s position
+///
+/// A shieldwall capture is a type of capture where enemy figures
+/// surrounded at the edge of the board get captured.
+///
+/// Returns `true` if something was captured `false` otherwise.
 pub fn shieldwall_capture_check(
-    mut event: EventReader<ShieldwallCaptureCheckEvent>,
-    q_board: Query<&Board>,
-    q_figure: Query<&Figure>,
-    mut capture_event: EventWriter<CaptureEvent>,
-    mut on_capture_check_end_event: EventWriter<OnCaptureCheckEndEvent>,
-) {
-    for ev in event.read() {
-        let board = q_board.get(ev.board_entity).unwrap();
-        let initial_entity = ev.figure_entity;
+    q_board: &mut Query<&mut Board>,
+    q_figure: &Query<&Figure>,
+    board_entity: Entity,
+    initial_entity: Entity,
+    commands: &mut Commands,
+) -> bool {
+    let board = q_board.get(board_entity).unwrap();
+    let to_capture = determine_shieldwall_capture(initial_entity, &board, &q_figure);
 
-        let to_capture = determine_shieldwall_capture(initial_entity, &board, &q_figure);
+    for figure_entity in &to_capture {
+        let figure = q_figure.get(*figure_entity).unwrap();
 
-        for figure_entity_to_capture in &to_capture {
-            let figure_to_capture = q_figure.get(*figure_entity_to_capture).unwrap();
-
-            // King can't be captured with a shieldwall capture
-            if figure_to_capture.kind == FigureKind::King {
-                continue;
-            }
-
-            capture_event.send(CaptureEvent {
-                board_entity: ev.board_entity,
-                figure_entity: *figure_entity_to_capture,
-            });
+        // the king can't be captured
+        if figure.kind == FigureKind::King {
+            continue;
         }
 
-        on_capture_check_end_event.send(OnCaptureCheckEndEvent {
-            board_entity: ev.board_entity,
-            capture_happened: !to_capture.is_empty(),
-        });
+        capture(q_board, q_figure, board_entity, *figure_entity, commands);
     }
+
+    return !to_capture.is_empty();
 }
 
 #[derive(Clone, Copy)]

@@ -43,11 +43,7 @@ impl Plugin for TaflPlugin {
             .add_event::<TryMoveFigureEvent>()
             .add_event::<MoveFigureEvent>()
             .add_event::<ReleaseSelectedFigureEvent>()
-            .add_event::<CaptureChecksEvent>()
             .add_event::<CaptureCheckEvent>()
-            .add_event::<ShieldwallCaptureCheckEvent>()
-            .add_event::<CaptureEvent>()
-            .add_event::<OnCaptureCheckEndEvent>()
             .add_event::<EndMoveEvent>()
             .add_event::<KingOnCornerCheckEvent>()
             .add_event::<KingSurroundedCheckEvent>()
@@ -64,11 +60,7 @@ impl Plugin for TaflPlugin {
                         slide_and_move_figure,
                         move_figure,
                         release_selected_figure,
-                        capture_checks,
                         capture_check,
-                        shieldwall_capture_check,
-                        collect_on_capture_check_end,
-                        capture,
                         end_move,
                         king_on_corner_check,
                         king_surrounded_check,

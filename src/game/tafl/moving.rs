@@ -1,6 +1,5 @@
-use crate::game::tafl::*;
-
 use self::win_conditions::KingOnCornerCheckEvent;
+use crate::game::tafl::*;
 
 #[derive(Resource)]
 pub struct MoveFigureOptions {
@@ -42,16 +41,16 @@ pub fn move_figure(
     mut q_board: Query<&mut Board>,
     mut q_figure: Query<(&mut Figure, &mut Transform)>,
     mut king_on_corner_check_event: EventWriter<KingOnCornerCheckEvent>,
-    mut end_move_event: EventWriter<EndMoveEvent>,
-    mut capture_checks_event: EventWriter<CaptureChecksEvent>,
+    mut capture_checks_event: EventWriter<CaptureCheckEvent>,
 ) {
     for ev in event.read() {
         let mut board = q_board.get_mut(ev.board_entity).unwrap();
 
-        let Some(figure_entity) = board.figures.get(&ev.from) else {
+        let Some(figure_entity) = board.figures.get(&ev.from).copied() else {
             panic!("`from` should contain a figure");
         };
-        let (mut figure, mut figure_transform) = q_figure.get_mut(*figure_entity).unwrap();
+
+        let (mut figure, mut figure_transform) = q_figure.get_mut(figure_entity).unwrap();
 
         if let Some(val) = board.figures.remove(&figure.position) {
             board.figures.insert(ev.to, val);
@@ -66,18 +65,9 @@ pub fn move_figure(
             });
         }
 
-        let neighbors = board.get_neighbors(ev.to);
-
-        if neighbors.is_empty() {
-            end_move_event.send(EndMoveEvent {
-                board_entity: ev.board_entity,
-                capture_happened: false,
-            });
-        }
-
-        capture_checks_event.send(CaptureChecksEvent {
+        capture_checks_event.send(CaptureCheckEvent {
             board_entity: ev.board_entity,
-            figure_entities: neighbors,
+            moved_figure_entity: figure_entity,
         });
     }
 }
@@ -96,6 +86,7 @@ pub fn end_move(
     for ev in event.read() {
         let mut turn_tracker = q_board.get_mut(ev.board_entity).unwrap();
         turn_tracker.next_turn();
+
         indicate_turn_event.send(IndicateTurnEvent {
             side: Some(turn_tracker.side),
         });
