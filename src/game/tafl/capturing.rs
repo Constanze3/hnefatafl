@@ -17,7 +17,7 @@ pub fn capture(
     commands.entity(figure_entity).despawn();
 }
 
-/// Determines whether a "position" on the board is blocked for a "figure".
+/// Determines whether a `position` on the board is blocked for a `figure`.
 ///
 /// A blocked position means it either:
 /// - contains an enemy
@@ -104,7 +104,6 @@ pub fn capture_check(
                 );
 
                 king_surrounded_check_event.send(KingSurroundedCheckEvent { board_entity });
-
                 continue;
             }
 

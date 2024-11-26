@@ -17,6 +17,8 @@ pub fn shieldwall_capture_check(
     let board = q_board.get(board_entity).unwrap();
     let to_capture = determine_shieldwall_capture(initial_entity, &board, &q_figure);
 
+    let mut capture_happened = false;
+
     for figure_entity in &to_capture {
         let figure = q_figure.get(*figure_entity).unwrap();
 
@@ -26,9 +28,10 @@ pub fn shieldwall_capture_check(
         }
 
         capture(q_board, q_figure, board_entity, *figure_entity, commands);
+        capture_happened |= true;
     }
 
-    return !to_capture.is_empty();
+    return capture_happened;
 }
 
 #[derive(Clone, Copy)]
